@@ -1,4 +1,6 @@
 
+> [!CAUTION]
+> This extension is still under development. It may contain numerous bugs and has not been exhaustively tested.
 # McGill Lecture Downloader Chrome Extension
 
 This Google Chrome extension allows you to download lecture recordings from McGill's myCourses platform. Follow the instructions below to ensure you have all the required data to use this extension effectively.
