@@ -1,0 +1,73 @@
+#popup {
+    position: fixed;
+    top: 60px;
+    right: 60px;
+    width: 500px;
+    height: 500px;
+    background-color: darkgrey;
+    border: 2px solid black;
+    z-index: 2147483646;
+    border-radius: 10px;
+    margin: 0;
+    padding: 0;
+}
+
+#popup iframe {
+    position: absolute;
+    width: 100%;
+    height: calc(100% - 35px);
+    bottom: 0;
+    background-color: white;
+    border: none;
+}
+
+#titleBar {
+    width: 100%;
+    height: 35px;
+    top: 0;
+    left: 0;
+    background-color: black;
+    color: white;
+    text-align: center;
+    line-height: 35px;
+    border-top-left-radius: 10px;
+    border-top-right-radius: 10px;
+    cursor: move;
+    user-select: none;
+    position: absolute;
+    margin: 0;
+    font-size: 15px;
+    padding: 0;
+}
+
+#closeButton {
+    all: unset;
+    width: 20px;
+    height: 20px;
+    font-size: 10px;
+    text-align: center;
+    position: absolute;
+    border-radius: 50%;
+    top: 5px;
+    right: 5px;
+    background-color: red;
+    color: white;
+    cursor: pointer;
+    z-index: 2147483647;
+}
+
+#closeButton:active {
+    background-color: darkred;
+}
+
+#overlay {
+
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 2147483647;
+    cursor: move;
+
+}
