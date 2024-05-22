@@ -25,8 +25,9 @@ notFound.innerText =
 Try the following steps:\n\n\
 1. Go to myCourses and login\n\
 2. Go to the course you want to download\n\
-3. Click on the extension icon and verify that everything works\n\
-4. If not, try contacting the developer\n\
+3. Go to lecture recordings page\n\
+4. Click on the extension icon and verify that everything works\n\
+5. If not, try contacting the developer\n\
 ";
 
 notFound.style.marginBottom = "70px";
@@ -318,8 +319,8 @@ async function createCourseDiv(courseDigit, context_title = null) {
     mediaListDiv.appendChild(mediaItem);
   });
 
-  // Append media list to course div as the first child in the course div
-  courseDiv.insertBefore(mediaListDiv, courseDiv.firstChild);
+  // Append media list to course div 
+  courseDiv.appendChild(mediaListDiv);
   mediaListDiv.style.display = 'none';
 
   // Add click event to toggle media list

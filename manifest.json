@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "McDownload",
+  "name": "McLecture",
   "version": "1.0",
   "permissions": [
     "webRequest",
