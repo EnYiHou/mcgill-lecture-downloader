@@ -151,12 +151,14 @@ function setDownloadButton() {
     let mediaIDs = [];
     mediaItems.forEach(item => {
       mediaIDs.push(item.value);
+      let courseName = item.getAttribute('course-name');
+      let courseIndex = item.getAttribute('course-index');
+      let fileName = `${courseName}_${courseIndex}`;
+      downloadMedia(item.value, fileName);
     });
 
     console.log('Selected media IDs: ', mediaIDs);
-    for (let rid of mediaIDs) {
-      downloadMedia(rid, rid.toString());
-    }
+    
 
   });
 
@@ -276,7 +278,8 @@ async function createCourseDiv(courseDigit, context_title = null) {
   mediaListDiv.className = 'media-list';
 
   // Populate the media list
-  mediaList.forEach(media => {
+  for (let i = 0; i < mediaList.length; i++) {
+    let media = mediaList[i];
     let mediaItem = document.createElement('div');
     mediaItem.className = 'media-item';
     let mediaInfo = document.createElement('div');
@@ -300,6 +303,8 @@ async function createCourseDiv(courseDigit, context_title = null) {
     let checkbox = document.createElement('input');
     checkbox.className = 'media-checkbox';
     checkbox.type = 'checkbox';
+    checkbox.setAttribute('course-name', context_title); 
+    checkbox.setAttribute('course-index', i);
     checkbox.value = media.id;
     mediaItem.appendChild(checkbox);
 
@@ -317,7 +322,7 @@ async function createCourseDiv(courseDigit, context_title = null) {
     });
 
     mediaListDiv.appendChild(mediaItem);
-  });
+  };
 
   // Append media list to course div 
   courseDiv.appendChild(mediaListDiv);
