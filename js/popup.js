@@ -32,8 +32,11 @@ Try the following steps:\n\n\
 
 notFound.style.marginBottom = "70px";
 document.getElementById('main').appendChild(notFound);
-
-
+let downloadedItems = [];
+chrome.storage.local.get({ downloadedItems: [] }, (result) => {
+  downloadedItems = result.downloadedItems;
+  console.log("Downloaded items: ", downloadedItems);
+});
 
 function removeItemAll(arr, value) {
   var i = 0;
@@ -151,13 +154,11 @@ function setDownloadButton() {
     let mediaIDs = [];
     mediaItems.forEach(item => {
       mediaIDs.push(item.value);
-      let courseName = item.getAttribute('course-name');
-      let courseIndex = item.getAttribute('course-index');
-      let fileName = `${courseName}_${courseIndex}`;
+      let fileName = item.getAttribute('filename');
       downloadMedia(item.value, fileName);
     });
 
-    console.log('Selected media IDs: ', mediaIDs);
+    // console.log('Selected media IDs: ', mediaIDs);
     
 
   });
@@ -177,7 +178,7 @@ async function getFileSize(url, params) {
 
     const contentRange = response.headers.get('Content-Range');
     const totalBytes = parseInt(contentRange.split('/')[1], 10);
-    console.log("Full url: ", fullUrl);
+    // console.log("Full url: ", fullUrl);
     return totalBytes;
   } catch (error) {
     console.error('Error getting file size:', error);
@@ -199,7 +200,7 @@ async function downloadMedia(rid, filename, f = "VGA") {
     };
 
     const totalBytes = await getFileSize("https://lrscdn.mcgill.ca/api/tsmedia/", params);
-    console.log(`Total bytes: ${totalBytes}`);
+    // console.log(`Total bytes: ${totalBytes}`);
 
     const headers = {
       "Range": `bytes=0-${totalBytes - 1}`,
@@ -225,7 +226,7 @@ async function downloadMedia(rid, filename, f = "VGA") {
           console.error(`Error downloading video: ${chrome.runtime.lastError}`);
           alert(`Error downloading video: ${chrome.runtime.lastError}`);
         } else {
-          console.log('Download started with ID:', downloadId);
+          // console.log('Download started with ID:', downloadId);
         }
       });
     } else {
@@ -234,6 +235,18 @@ async function downloadMedia(rid, filename, f = "VGA") {
     }
 
     removeItemAll(downloadingCourses, rid);
+    chrome.storage.local.get({ downloadedItems: [] }, (result) => {
+      let downloadedItems = result.downloadedItems;
+      downloadedItems.push(filename);
+      document.querySelectorAll(`div[filename="${filename}"]`).forEach(div => {
+        div.style.backgroundColor = 'lightgreen';
+      });
+      chrome.storage.local.set({ downloadedItems: downloadedItems }, () => {
+        console.log(`Item ${filename} has been marked as downloaded.`);
+      });
+    });
+
+
     if (downloadingCourses.length === 0) {
       alert('All downloads completed');
       let downloadButton = document.getElementById('download-button');
@@ -258,12 +271,12 @@ async function downloadMedia(rid, filename, f = "VGA") {
 }
 
 async function createCourseDiv(courseDigit, context_title = null) {
-  console.log(courseDigit);
+  // console.log(courseDigit);
   if (courseDigit == null) {
     return;
   }
   let mediaList = await getCourseMediaList(courseDigit, bearer);
-  console.log("Media List: ", mediaList);
+  // console.log("Media List: ", mediaList);
 
   // Create the course div
   let courseDiv = document.createElement('div');
@@ -281,6 +294,13 @@ async function createCourseDiv(courseDigit, context_title = null) {
   for (let i = 0; i < mediaList.length; i++) {
     let media = mediaList[i];
     let mediaItem = document.createElement('div');
+    let filename = `${i}_${context_title}`;
+    mediaItem.setAttribute('filename', filename);
+
+    if (downloadedItems.includes(filename)) {
+      mediaItem.style.backgroundColor = 'lightgreen';
+    }
+    
     mediaItem.className = 'media-item';
     let mediaInfo = document.createElement('div');
     mediaItem.appendChild(mediaInfo);
@@ -303,8 +323,7 @@ async function createCourseDiv(courseDigit, context_title = null) {
     let checkbox = document.createElement('input');
     checkbox.className = 'media-checkbox';
     checkbox.type = 'checkbox';
-    checkbox.setAttribute('course-name', context_title); 
-    checkbox.setAttribute('course-index', i);
+    checkbox.setAttribute('filename', filename);
     checkbox.value = media.id;
     mediaItem.appendChild(checkbox);
 
@@ -314,7 +333,12 @@ async function createCourseDiv(courseDigit, context_title = null) {
       mediaItem.style.transition = "background-color 0.5s";
 
       mediaItem.addEventListener("mouseout", function () {
-        mediaItem.style.backgroundColor = "white";
+        if (downloadedItems.includes(filename)) {
+          mediaItem.style.backgroundColor = "lightgreen";
+        }
+        else {
+          mediaItem.style.backgroundColor = "white";
+        }
       });
     });
     mediaItem.addEventListener('click', (event) => {
@@ -350,12 +374,11 @@ async function createCourseDiv(courseDigit, context_title = null) {
 async function processCourse(course, cookies, bearer) {
   let payload = await getPayLoad(cookies, course);
   let context_title = payload.context_title;
-  console.log(payload);
   let courseIDHTML = await getHFCourseIDHTML(payload);
   let courseDigit = extractHFCourseID(courseIDHTML);
   if (courseDigit == null) {
-    console.log("Course digit not found");
-    console.log("Course ID: ", payload);
+    // console.log("Course digit not found");
+    // console.log("Course ID: ", payload);
   }
   processedCourses.push(courseDigit);
   createCourseDiv(courseDigit, context_title);
@@ -406,11 +429,11 @@ document.addEventListener('DOMContentLoaded', async function () {
     const cookies = cookiesResult.Cookies.cookies;
 
 
-    console.log("bearer: ", bearer);
-    console.log("stoken: ", stoken);
-    console.log("etime: ", etime);
-    console.log("coursesList: ", coursesList);
-    console.log("cookies: ", cookies);
+    // console.log("bearer: ", bearer);
+    // console.log("stoken: ", stoken);
+    // console.log("etime: ", etime);
+    // console.log("coursesList: ", coursesList);
+    // console.log("cookies: ", cookies);
 
 
     if (!stoken || !etime || !bearer || !coursesList || !cookies) {
