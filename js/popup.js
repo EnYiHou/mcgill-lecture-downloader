@@ -32,11 +32,19 @@ Try the following steps:\n\n\
 
 notFound.style.marginBottom = "70px";
 document.getElementById('main').appendChild(notFound);
+
 let downloadedItems = [];
-chrome.storage.local.get({ downloadedItems: [] }, (result) => {
-  downloadedItems = result.downloadedItems;
-  console.log("Downloaded items: ", downloadedItems);
-});
+(async () => {
+  downloadedItems = await new Promise((resolve, reject) => {
+    chrome.storage.local.get({ downloadedItems: [] }, (result) => {
+      if (chrome.runtime.lastError) {
+        reject(chrome.runtime.lastError);
+      } else {
+        resolve(result.downloadedItems);
+      }
+    });
+  });
+})();
 
 function removeItemAll(arr, value) {
   var i = 0;
@@ -235,14 +243,32 @@ async function downloadMedia(rid, filename, f = "VGA") {
     }
 
     removeItemAll(downloadingCourses, rid);
-    chrome.storage.local.get({ downloadedItems: [] }, (result) => {
-      let downloadedItems = result.downloadedItems;
-      downloadedItems.push(filename);
-      document.querySelectorAll(`div[filename="${filename}"]`).forEach(div => {
-        div.style.backgroundColor = 'lightgreen';
+    let result = await new Promise((resolve, reject) => {
+      chrome.storage.local.get({ downloadedItems: [] }, (result) => {
+      if (chrome.runtime.lastError) {
+        reject(chrome.runtime.lastError);
+      } else {
+        resolve(result);
+      }
       });
+    });
+
+    let downloadedItems = result.downloadedItems;
+    if (!downloadedItems.includes(filename)) {
+      downloadedItems.push(filename);
+    }
+    document.querySelectorAll(`div[filename="${filename}"]`).forEach(div => {
+      div.style.backgroundColor = 'lightgreen';
+    });
+
+    await new Promise((resolve, reject) => {
       chrome.storage.local.set({ downloadedItems: downloadedItems }, () => {
+      if (chrome.runtime.lastError) {
+        reject(chrome.runtime.lastError);
+      } else {
         console.log(`Item ${filename} has been marked as downloaded.`);
+        resolve();
+      }
       });
     });
 
@@ -295,6 +321,7 @@ async function createCourseDiv(courseDigit, context_title = null) {
     let media = mediaList[i];
     let mediaItem = document.createElement('div');
     let filename = `${i}_${context_title}`;
+    
     mediaItem.setAttribute('filename', filename);
 
     if (downloadedItems.includes(filename)) {
@@ -327,20 +354,6 @@ async function createCourseDiv(courseDigit, context_title = null) {
     checkbox.value = media.id;
     mediaItem.appendChild(checkbox);
 
-    // Add media item to media list
-    mediaItem.addEventListener("mouseover", function () {
-      mediaItem.style.backgroundColor = "lightgrey";
-      mediaItem.style.transition = "background-color 0.5s";
-
-      mediaItem.addEventListener("mouseout", function () {
-        if (downloadedItems.includes(filename)) {
-          mediaItem.style.backgroundColor = "lightgreen";
-        }
-        else {
-          mediaItem.style.backgroundColor = "white";
-        }
-      });
-    });
     mediaItem.addEventListener('click', (event) => {
       event.stopPropagation();
     });
