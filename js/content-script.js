@@ -24,7 +24,7 @@ function createCloseButton() {
   closeButton.addEventListener("mousedown", function (e) {
     e.preventDefault();
     closeButton.style.backgroundColor = "darkred";
-    console.log("Close button clicked");
+    // console.log("Close button clicked");
     let originalX = e.clientX;
     let originalY = e.clientY;
     let onMouseUpEvent = function (e) {
@@ -34,7 +34,7 @@ function createCloseButton() {
 
       let deltaX = newX - originalX;
       let deltaY = newY - originalY;
-      console.log("Close button dragged by: ", deltaX, deltaY);
+      // console.log("Close button dragged by: ", deltaX, deltaY);
 
       if (Math.abs(deltaX) < 5 && Math.abs(deltaY) < 5) {
         detach();

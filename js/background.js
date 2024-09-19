@@ -1,6 +1,7 @@
 chrome.webRequest.onBeforeSendHeaders.addListener(
   async function (details) {
-    console.log("url: ", details.url);
+
+    // console.log("url: ", details.url);
 
     // Only intercept GET requests
     if (details.method !== "GET") {
@@ -26,7 +27,7 @@ chrome.webRequest.onBeforeSendHeaders.addListener(
     // Handle courses list
     else if (details.url.includes("notifications.api.brightspace.com")) {
       let courseId = details.url.split("/").pop();
-      console.log("Course ID: ", courseId);
+      // console.log("Course ID: ", courseId);
       storageName = "CoursesList";
 
       const result = await new Promise((resolve, reject) => {
@@ -42,7 +43,7 @@ chrome.webRequest.onBeforeSendHeaders.addListener(
       }
       let currentCoursesList = result.CoursesList.coursesList;
 
-      console.log("Current courses list: ");
+      // console.log("Current courses list: ");
 
       if (!currentCoursesList.includes(courseId)) {
         currentCoursesList.push(courseId);
@@ -69,16 +70,16 @@ chrome.webRequest.onBeforeSendHeaders.addListener(
       };
       message = myMessage;
       chrome.storage.local.set({ [storageName]: message });
-      console.log("Message stored: ", message);
+      // console.log("Message stored: ", message);
 
-      console.log("Course ID: ", details.url.split("/").pop());
+      // console.log("Course ID: ", details.url.split("/").pop());
       storageName = "CoursesDigits";
       let courseDigit = details.url.split("/").pop();
-      console.log("Course ID: ", courseDigit);
-      storageName = "CoursesDigits";
+      // console.log("Course ID: ", courseDigit);
+
 
       const result = await new Promise((resolve, reject) => {
-        chrome.storage.local.get("CoursesDigits", function (result) {
+        chrome.storage.local.get(storageName, function (result) {
           if (chrome.runtime.lastError) {
             return reject(chrome.runtime.lastError);
           }
@@ -90,7 +91,7 @@ chrome.webRequest.onBeforeSendHeaders.addListener(
       }
       let currentCoursesDigitsList = result.CoursesDigits.list;
 
-      console.log("Current courses list: ");
+      // console.log("Current courses list: ");
 
       if (!currentCoursesDigitsList.includes(courseDigit)) {
         currentCoursesDigitsList.push(courseDigit);
@@ -101,7 +102,7 @@ chrome.webRequest.onBeforeSendHeaders.addListener(
     }
     // Store the message in chrome.storage
     chrome.storage.local.set({ [storageName]: message });
-    console.log("Message stored: ", message);
+    // console.log("Message stored: ", message);
 
     return { requestHeaders: details.requestHeaders };
   },
