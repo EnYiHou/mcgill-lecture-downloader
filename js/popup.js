@@ -20,8 +20,8 @@ Try the following steps:\n\n\
 
 
 let notFound = document.createElement("p");
-notFound.innerText = 
-"Can't find your courses?\n\n\
+notFound.innerText =
+  "Can't find your courses?\n\n\
 Try the following steps:\n\n\
 1. Go to myCourses and login\n\
 2. Go to the course you want to download\n\
@@ -163,11 +163,11 @@ function setDownloadButton() {
     mediaItems.forEach(item => {
       mediaIDs.push(item.value);
       let fileName = item.getAttribute('filename');
-      downloadMedia(item.value, fileName);
+      downloadMedia(item.value, fileName, item.getAttribute('videoType'));
     });
 
     // console.log('Selected media IDs: ', mediaIDs);
-    
+
 
   });
 
@@ -245,11 +245,11 @@ async function downloadMedia(rid, filename, f = "VGA") {
     removeItemAll(downloadingCourses, rid);
     let result = await new Promise((resolve, reject) => {
       chrome.storage.local.get({ downloadedItems: [] }, (result) => {
-      if (chrome.runtime.lastError) {
-        reject(chrome.runtime.lastError);
-      } else {
-        resolve(result);
-      }
+        if (chrome.runtime.lastError) {
+          reject(chrome.runtime.lastError);
+        } else {
+          resolve(result);
+        }
       });
     });
 
@@ -263,12 +263,12 @@ async function downloadMedia(rid, filename, f = "VGA") {
 
     await new Promise((resolve, reject) => {
       chrome.storage.local.set({ downloadedItems: downloadedItems }, () => {
-      if (chrome.runtime.lastError) {
-        reject(chrome.runtime.lastError);
-      } else {
-        console.log(`Item ${filename} has been marked as downloaded.`);
-        resolve();
-      }
+        if (chrome.runtime.lastError) {
+          reject(chrome.runtime.lastError);
+        } else {
+          console.log(`Item ${filename} has been marked as downloaded.`);
+          resolve();
+        }
       });
     });
 
@@ -296,7 +296,7 @@ async function downloadMedia(rid, filename, f = "VGA") {
   }
 }
 
-async function createCourseDiv(courseDigit, context_title = null) {
+async function createCourseDiv(courseDigit, context_title = null, courseListID = null) {
   // console.log(courseDigit);
   if (courseDigit == null) {
     return;
@@ -306,6 +306,7 @@ async function createCourseDiv(courseDigit, context_title = null) {
 
   // Create the course div
   let courseDiv = document.createElement('div');
+  courseDiv.setAttribute('courseDigit', courseDigit);
   courseDiv.className = 'courseDiv';
   if (context_title == null) {
     context_title = mediaList[0].courseName;
@@ -320,14 +321,54 @@ async function createCourseDiv(courseDigit, context_title = null) {
   for (let i = 0; i < mediaList.length; i++) {
     let media = mediaList[i];
     let mediaItem = document.createElement('div');
-    let filename = `${i}_${context_title}`;
     
+
+
+    let filename = `${i}_${context_title}`;
+
+    mediaItem.addEventListener('contextmenu', async (event) => {
+      event.stopPropagation();
+      event.preventDefault();
+
+
+      let downloadedItems = await new Promise((resolve, reject) => {
+        chrome.storage.local.get({ downloadedItems: [] }, (result) => {
+        if (chrome.runtime.lastError) {
+          reject(chrome.runtime.lastError);
+        } else {
+          resolve(result.downloadedItems);
+        }
+        });
+      });
+
+      if (!downloadedItems.includes(filename)) {
+        downloadedItems.push(filename);
+        mediaItem.style.backgroundColor = 'lightgreen';
+      } else {
+        downloadedItems = removeItemAll(downloadedItems, filename);
+        mediaItem.style.backgroundColor = 'white';
+      }
+
+      await new Promise((resolve, reject) => {
+        chrome.storage.local.set({ downloadedItems: downloadedItems }, () => {
+        if (chrome.runtime.lastError) {
+          reject(chrome.runtime.lastError);
+        } else {
+          console.log(`Item ${filename} has been added to downloaded items.`);
+          resolve();
+        }
+        });
+      });
+        
+    });
+
+
     mediaItem.setAttribute('filename', filename);
 
     if (downloadedItems.includes(filename)) {
       mediaItem.style.backgroundColor = 'lightgreen';
     }
-    
+
     mediaItem.className = 'media-item';
     let mediaInfo = document.createElement('div');
     mediaItem.appendChild(mediaInfo);
@@ -336,7 +377,7 @@ async function createCourseDiv(courseDigit, context_title = null) {
 
     // Add recording name
     let recordingName = document.createElement('p');
-    recordingName.textContent = media.recordingName;
+    recordingName.innerHTML = (media.recordingName ? media.recordingName : "Recording Name Unavailable") + "<br>" + filename;
     recordingName.style.padding = '5px';
     mediaInfo.appendChild(recordingName);
 
@@ -351,6 +392,7 @@ async function createCourseDiv(courseDigit, context_title = null) {
     checkbox.className = 'media-checkbox';
     checkbox.type = 'checkbox';
     checkbox.setAttribute('filename', filename);
+    checkbox.setAttribute('videoType', media.sources[0].label);
     checkbox.value = media.id;
     mediaItem.appendChild(checkbox);
 
@@ -369,7 +411,51 @@ async function createCourseDiv(courseDigit, context_title = null) {
   courseDiv.addEventListener('click', () => {
     mediaListDiv.style.display = mediaListDiv.style.display === 'none' ? 'block' : 'none';
   });
+  courseDiv.addEventListener('contextmenu', async function (ev) {
+    ev.preventDefault();
+    const CourseListIDDigits = await getFromStorage("CoursesList");
+    let CoursesListDigits = CourseListIDDigits.CoursesList.coursesList;
+    CoursesListDigits = removeItemAll(CoursesListDigits, courseListID);
+    console.log("CoursesListDigits: ", CoursesListDigits);
+    console.log("REMOVING Course digit: ", courseListID);
+    message = {
+      coursesList: CoursesListDigits
+    }
+    await new Promise((resolve, reject) => {
+      chrome.storage.local.set({ ["CoursesList"]: message }, () => {
+        if (chrome.runtime.lastError) {
+          reject(chrome.runtime.lastError);
+        } else {
+          console.log(`Course ${courseListID} has been removed.`);
+          resolve();
+        }
+      });
+    }
+    );
 
+    const CoursesDigits = await getFromStorage("CoursesDigits");
+    let CoursesDigitsList = CoursesDigits.CoursesDigits.list;
+    CoursesDigitsList = removeItemAll(CoursesDigitsList, courseDigit);
+    console.log("CoursesDigitsList: ", CoursesDigitsList);
+    console.log("REMOVING Course digit: ", courseDigit);
+    message = {
+      list: CoursesDigitsList
+    }
+    await new Promise((resolve, reject) => {
+      chrome.storage.local.set({ ["CoursesDigits"]: message }, () => {
+        if (chrome.runtime.lastError) {
+          reject(chrome.runtime.lastError);
+        } else {
+          console.log(`Course ${courseDigit} has been removed.`);
+          resolve();
+        }
+      });
+    }
+    );
+
+    courseDiv.remove();
+    return false;
+  }, false);
   courseDiv.addEventListener("mouseover", function () {
     courseDiv.style.backgroundColor = "lightblue";
     courseDiv.style.transition = "background-color 0.5s";
@@ -394,7 +480,7 @@ async function processCourse(course, cookies, bearer) {
     // console.log("Course ID: ", payload);
   }
   processedCourses.push(courseDigit);
-  createCourseDiv(courseDigit, context_title);
+  createCourseDiv(courseDigit, context_title, course);
 }
 
 async function processAllCourses(coursesList, cookies, bearer) {
