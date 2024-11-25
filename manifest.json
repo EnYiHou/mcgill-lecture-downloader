@@ -6,6 +6,7 @@
     "webRequest",
     "storage",
     "tabs",
+    "activeTab",
     "downloads"
   ],
   "host_permissions": [
