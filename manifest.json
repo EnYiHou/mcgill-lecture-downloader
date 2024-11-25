@@ -4,11 +4,8 @@
   "version": "1.0",
   "permissions": [
     "webRequest",
-    "webRequestBlocking",
     "storage",
     "tabs",
-    "scripting",
-    "activeTab",
     "downloads"
   ],
   "host_permissions": [
