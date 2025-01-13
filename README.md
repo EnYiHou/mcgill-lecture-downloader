@@ -8,13 +8,11 @@ This Google Chrome extension allows you to download lecture recordings from McGi
 ## Installation
 
 1. Clone or download this repository.
-   - To clone the repository, use `git clone https://github.com/EnYiHou/mcgill-lecture-downloader.git`.
-   - Alternatively, you can download the `crx` file from the releases section.
+   - To clone the repository, copy in your terminal `git clone https://github.com/EnYiHou/mcgill-lecture-downloader.git`.
 2. Open Chrome and go to `chrome://extensions/`.
 3. Enable "Developer mode" in the top right corner.
 4. Load the downloaded extension to Google Chrome.
-   - If you cloned the repository, click on "Load unpacked" and select the directory where you downloaded/cloned this repository.
-   - If you downloaded the `crx` file, drag and drop it into the Chrome extensions page.
+   - Click on "Load unpacked" and select the directory where you downloaded/cloned this repository.
 
 ## Usage Instructions
 
