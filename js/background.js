@@ -10,9 +10,11 @@ chrome.webRequest.onBeforeSendHeaders.addListener(
     let storageName = "";
     let message = {};
 
+    console.log("Detected url: ", details.url);
 
     // Handle sToken and etime
-    if (details.url.includes("tsmedia")) {
+    if (details.url.includes("https://lrscdn.mcgill.ca/api/tsmedia")) {
+      console.log("Detected lrscdn.mcgill.ca");
       storageName = "RecordingsInfo";
       let url = new URL(details.url);
       let stoken = url.searchParams.get("stoken");
@@ -26,6 +28,7 @@ chrome.webRequest.onBeforeSendHeaders.addListener(
 
     // Handle courses list
     else if (details.url.includes("notifications.api.brightspace.com")) {
+      console.log("Detected notifications.api.brightspace.com");
       let courseId = details.url.split("/").pop();
       // console.log("Course ID: ", courseId);
       storageName = "CoursesList";
@@ -55,6 +58,7 @@ chrome.webRequest.onBeforeSendHeaders.addListener(
 
     // Handle cookies
     else if (details.url.includes("mycourses2.mcgill.ca")) {
+      console.log("Detected mycourses2.mcgill.ca");
       storageName = "Cookies";
       let cookies = details.requestHeaders.find(header => header.name.toLowerCase() === 'cookie');
       message = {

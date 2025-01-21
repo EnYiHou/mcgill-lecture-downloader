@@ -5,8 +5,6 @@
   "permissions": [
     "webRequest",
     "storage",
-    "tabs",
-    "activeTab",
     "downloads",
     "scripting"
   ],
