@@ -8,33 +8,79 @@ let coursesList;
 let processedCourses = [];
 let downloadingCourses = [];
 
+// main - [info, courses]
+let info_div = document.createElement("div");
+let courses_div = document.createElement("div");
 
-let errorP = document.createElement("p");
-errorP.innerText =
-  "Some data is missing or expired.\n\
-Please make sure you have all the required data.\n\n\n\
-Try the following steps:\n\n\
-1. Go to myCourses and login\n\
-2. Go to the course you want to download\n\
-3. Watch a lecture video of the course\n\
-4. Click on the extension icon and verify that everything works\n\
-5. If not, try contacting the developer\n\
-";
+info_div.setAttribute("id", "info");
+courses_div.setAttribute("id", "courses");
 
 
-let notFound = document.createElement("p");
-notFound.innerText =
-  "Can't find your courses?\n\n\
-Try the following steps:\n\n\
-1. Go to myCourses and login\n\
-2. Go to the course you want to download\n\
-3. Go to lecture recordings page\n\
-4. Click on the extension icon and verify that everything works\n\
-5. If not, try contacting the developer\n\
-";
+document.body.appendChild(info_div);
+document.body.appendChild(courses_div);
 
-notFound.style.marginBottom = "70px";
-document.getElementById('main').appendChild(notFound);
+
+const instructionContent = document.createElement("div");
+instructionContent.id = "instructionContent";
+instructionContent.classList.add("show");
+
+
+const closeBtn = document.createElement("button");
+closeBtn.id = "instructionCloseBtn";
+closeBtn.textContent = "X";
+closeBtn.addEventListener("click", () => {
+  instructionContent.classList.toggle("show");
+});
+
+instructionContent.appendChild(closeBtn);
+
+const cannotFindCourses = document.createElement("div");
+cannotFindCourses.innerHTML = `
+  <h3>Can't find your courses?</h3>
+  <p>Try the following steps:</p>
+  <ol>
+    <li>Go to myCourses and login</li>
+    <li>Go to the course you want to download</li>
+    <li>Watch a lecture video of the course</li>
+    <li>Click on the extension icon and verify that everything works</li>
+    <li>If not, try contacting the developer</li>
+  </ol>
+`;
+
+instructionContent.appendChild(cannotFindCourses);
+
+const seperator = document.createElement("hr");
+instructionContent.appendChild(seperator);
+
+const features = document.createElement("div");
+features.innerHTML = `
+  <h3>Features</h3>
+  <ul>
+    <li>Download multiple videos at once, select the videos you want to download and click the download button. <strong> DO NOT CLOSE THE TAB WHEN DOWNLOADING </strong></li>
+    <li>Mark videos as downloaded by right-clicking on the specific video</li>
+    <li>Remove courses from the list by right-clicking on the course (removed courses can be added back by reaccessing MyCourses)</li>
+  </ul>
+`;
+
+instructionContent.appendChild(features);
+
+
+document.body.appendChild(instructionContent);
+
+
+// 2. CREATE THE INSTRUCTIONS BUTTON
+const instructionBtn = document.createElement("button");
+instructionBtn.id = "instructionBtn";
+instructionBtn.textContent = "Instructions";
+
+
+// 3. TOGGLE INSTRUCTIONS VISIBILITY ON BUTTON CLICK
+instructionBtn.addEventListener("click", () => {
+  instructionContent.classList.toggle("show");
+});
+
+// 4. APPEND TO THE DOCUMENT
+document.body.appendChild(instructionBtn);
 
 let downloadedItems = [];
 (async () => {
@@ -82,7 +128,6 @@ async function getPayLoad(cookie, courseDigit) {
   } catch (error) {
     console.error('Error:', error);
     clearMainDiv();
-    document.getElementById('main').appendChild(errorP);
     throw error;
   }
 }
@@ -123,7 +168,7 @@ async function getHFCourseIDHTML(payload) {
   } catch (error) {
     console.error('Error:', error);
     clearMainDiv();
-    document.getElementById('main').appendChild(errorP);
+
     throw error;
   }
 }
@@ -195,7 +240,7 @@ async function getFileSize(url, params) {
     console.error('Error getting file size:', error);
 
     clearMainDiv();
-    document.getElementById('main').appendChild(errorP);
+
     throw error;
   }
 }
@@ -319,12 +364,14 @@ async function createCourseDiv(courseDigit, context_title = null, courseListID =
   // Create the media list div
   let mediaListDiv = document.createElement('div');
   mediaListDiv.className = 'media-list';
+  mediaListDiv.classList.add('media-list');
+
 
   // Populate the media list
   for (let i = 0; i < mediaList.length; i++) {
     let media = mediaList[i];
     let mediaItem = document.createElement('div');
-    
+
 
 
     let filename = `${i}_${context_title}`;
@@ -336,11 +383,11 @@ async function createCourseDiv(courseDigit, context_title = null, courseListID =
 
       let downloadedItems = await new Promise((resolve, reject) => {
         chrome.storage.local.get({ downloadedItems: [] }, (result) => {
-        if (chrome.runtime.lastError) {
-          reject(chrome.runtime.lastError);
-        } else {
-          resolve(result.downloadedItems);
-        }
+          if (chrome.runtime.lastError) {
+            reject(chrome.runtime.lastError);
+          } else {
+            resolve(result.downloadedItems);
+          }
         });
       });
 
@@ -349,20 +396,20 @@ async function createCourseDiv(courseDigit, context_title = null, courseListID =
         mediaItem.style.backgroundColor = 'lightgreen';
       } else {
         downloadedItems = removeItemAll(downloadedItems, filename);
-        mediaItem.style.backgroundColor = 'white';
+        mediaItem.style.backgroundColor = 'lightgrey';
       }
 
       await new Promise((resolve, reject) => {
         chrome.storage.local.set({ downloadedItems: downloadedItems }, () => {
-        if (chrome.runtime.lastError) {
-          reject(chrome.runtime.lastError);
-        } else {
-          console.log(`Item ${filename} has been added to downloaded items.`);
-          resolve();
-        }
+          if (chrome.runtime.lastError) {
+            reject(chrome.runtime.lastError);
+          } else {
+            console.log(`Item ${filename} has been added to downloaded items.`);
+            resolve();
+          }
         });
       });
-        
+
     });
 
 
@@ -374,21 +421,21 @@ async function createCourseDiv(courseDigit, context_title = null, courseListID =
 
     mediaItem.className = 'media-item';
     let mediaInfo = document.createElement('div');
+    mediaInfo.className = 'media-info';
     mediaItem.appendChild(mediaInfo);
-    mediaInfo.style.display = 'block';
-    mediaInfo.style.width = '80%';
 
     // Add recording name
     let recordingName = document.createElement('p');
-    recordingName.innerHTML = (media.recordingName ? media.recordingName : "Recording Name Unavailable") + "<br>" + filename;
-    recordingName.style.padding = '5px';
+    recordingName.innerHTML = "<strong>Recording Name:</strong> " + (media.recordingName ? media.recordingName : "Recording Name Unavailable");
     mediaInfo.appendChild(recordingName);
 
     // Add recording time
     let recordingTime = document.createElement('p');
-    recordingTime.textContent = media.dateTime;;
-    recordingTime.style.padding = '5px';
+    recordingTime.innerHTML = "<strong>Recording Time:</strong> " + media.recordingTime;
     mediaInfo.appendChild(recordingTime);
+
+    let downloadFileNames = document.createElement('p');
+    downloadFileNames.innerHTML = "<strong>Download File Name:</strong> " + filename;   mediaInfo.appendChild(downloadFileNames);
 
     // Add checkbox
     let checkbox = document.createElement('input');
@@ -408,11 +455,10 @@ async function createCourseDiv(courseDigit, context_title = null, courseListID =
 
   // Append media list to course div 
   courseDiv.appendChild(mediaListDiv);
-  mediaListDiv.style.display = 'none';
 
   // Add click event to toggle media list
   courseDiv.addEventListener('click', () => {
-    mediaListDiv.style.display = mediaListDiv.style.display === 'none' ? 'block' : 'none';
+    mediaListDiv.classList.toggle('expanded');
   });
   courseDiv.addEventListener('contextmenu', async function (ev) {
     ev.preventDefault();
@@ -459,18 +505,9 @@ async function createCourseDiv(courseDigit, context_title = null, courseListID =
     courseDiv.remove();
     return false;
   }, false);
-  courseDiv.addEventListener("mouseover", function () {
-    courseDiv.style.backgroundColor = "lightblue";
-    courseDiv.style.transition = "background-color 0.5s";
-
-    courseDiv.addEventListener("mouseout", function () {
-      courseDiv.style.backgroundColor = "lightgrey";
-    });
-  });
 
   // Append course div to main container
-  let main = document.getElementById('main');
-  main.insertBefore(courseDiv, main.firstChild);
+  courses_div.insertBefore(courseDiv, courses_div.firstChild);
 }
 
 async function processCourse(course, cookies, bearer) {
@@ -508,20 +545,99 @@ async function processAllCourses(coursesList, cookies, bearer) {
 
 
 document.addEventListener('DOMContentLoaded', async function () {
-  const main = document.getElementById('main');
-  main.style.width = '100%';
-  main.style.height = '90%';
+  courses_div.style.width = '100%';
+  courses_div.style.height = '90%';
 
   setDownloadButton();
   try {
+    
+    function createRow(labelText, valueText, exists) {
+      const rowDiv = document.createElement("div");
+      rowDiv.classList.add("info-row");
+    
+      const labelEl = document.createElement("p");
+      labelEl.classList.add("info-label");
+      labelEl.textContent = labelText;
+    
+      // We'll wrap the value in a separate div so we can animate its max-height
+      const valueWrapper = document.createElement("div");
+      valueWrapper.classList.add("info-value-wrapper");
+    
+      const valueEl = document.createElement("p");
+      valueEl.classList.add("info-value");
+      // Add a class for coloring
+      valueEl.classList.add(exists ? "exists" : "not-found");
+      valueEl.textContent = valueText;
+    
+      // Toggle expand on label click
+      labelEl.addEventListener("click", () => {
+        rowDiv.classList.toggle("expanded");
+      });
+
+      valueWrapper.addEventListener("click", () => {
+        rowDiv.classList.toggle("expanded");
+      });
+    
+      valueWrapper.appendChild(valueEl);
+      rowDiv.appendChild(labelEl);
+      rowDiv.appendChild(valueWrapper);
+    
+      return rowDiv;
+    }
+    
+    // 2. Fetch data (example usage)
     const recordingsInfoResult = await getFromStorage("RecordingsInfo");
     const mediaRecordingsResult = await getFromStorage("MediaRecordings");
     const coursesListResult = await getFromStorage("CoursesList");
     const cookiesResult = await getFromStorage("Cookies");
+    
+    // 3. Build and append each row
+    info_div.appendChild(
+      createRow(
+        "Recordings Info",
+        recordingsInfoResult.RecordingsInfo
+          ? JSON.stringify(recordingsInfoResult.RecordingsInfo, null, 2)
+          : "Not Found",
+        !!recordingsInfoResult.RecordingsInfo
+      )
+    );
+    
+    info_div.appendChild(
+      createRow(
+        "Media Recordings",
+        mediaRecordingsResult.MediaRecordings
+          ? JSON.stringify(mediaRecordingsResult.MediaRecordings, null, 2)
+          : "Not Found",
+        !!mediaRecordingsResult.MediaRecordings
+      )
+    );
+    
+    info_div.appendChild(
+      createRow(
+        "Courses List",
+        coursesListResult.CoursesList
+          ? JSON.stringify(coursesListResult.CoursesList, null, 2)
+          : "Not Found",
+        !!coursesListResult.CoursesList
+      )
+    );
+    
+    info_div.appendChild(
+      createRow(
+        "Cookies",
+        cookiesResult.Cookies
+          ? JSON.stringify(cookiesResult.Cookies, null, 2)
+          : "Not Found",
+        !!cookiesResult.Cookies
+      )
+    );
+    
+
+
 
     if (!recordingsInfoResult.RecordingsInfo || !mediaRecordingsResult.MediaRecordings || !coursesListResult.CoursesList || !cookiesResult.Cookies) {
       clearMainDiv();
-      document.getElementById('main').appendChild(errorP);
+
       return;
     }
     stoken = recordingsInfoResult.RecordingsInfo.stoken;
@@ -529,6 +645,8 @@ document.addEventListener('DOMContentLoaded', async function () {
     bearer = mediaRecordingsResult.MediaRecordings.authorizationHeader.value;
     coursesList = coursesListResult.CoursesList.coursesList;
     const cookies = cookiesResult.Cookies.cookies;
+
+
 
 
     // console.log("bearer: ", bearer);
@@ -540,14 +658,14 @@ document.addEventListener('DOMContentLoaded', async function () {
 
     if (!stoken || !etime || !bearer || !coursesList || !cookies) {
       p.innerText = message;
-      main.appendChild(p);
+      courses_div.appendChild(p);
     } else {
       processAllCourses(coursesList, cookies, bearer);
     }
   } catch (error) {
     console.error("Error: ", error);
     clearMainDiv();
-    document.getElementById('main').appendChild(errorP);
+
   }
 });
 
@@ -565,8 +683,9 @@ function getFromStorage(key) {
 
 
 function clearMainDiv() {
-  const main = document.getElementById('main');
-  while (main.firstChild) {
-    main.removeChild(main.firstChild);
+  while (courses_div.firstChild) {
+    courses_div.removeChild(courses_div.firstChild);
   }
+  courses_div.appendChild(notFound);
+
 }

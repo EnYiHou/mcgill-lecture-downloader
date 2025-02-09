@@ -1,11 +1,12 @@
 body {
-    font-family: Arial, sans-serif;
+    font-family: 'Times New Roman', Times, serif;
     margin: 0;
-    padding: 20px;
+    /* padding: 20px; */
     text-align: center;
     width: 100%;
     height: 100%;
     box-sizing: border-box;
+    background-color: #ffffff;
 }
 
 
@@ -13,30 +14,26 @@ p {
     font-family: 'Times New Roman', Times, serif;
     font-size: 14px;
     line-height: 1.6;
-    color: #333; 
-    margin: 5px 0 5px 0;
+    color: #333;
+    margin: 0;
 }
 
-#download-button {
-    bottom: 10px;
-    left: 10px;
-    width: 100px;
-    height: 50px;
-    background-color: blue;
-    color: white;
-    border: none;
-    border-radius: 5px;
-    position: fixed;
-    cursor: pointer;
-}
+
 
 .courseDiv {
     cursor: pointer;
     margin: 10px;
     padding: 10px;
-    border: 1px solid black;
+    border: 1px solid lightgrey;
     border-radius: 5px;
-    background-color: lightgrey;
+    background-color: #f5f5f5;
+    text-align: left;
+    transition: border 0.5s ease;
+
+}
+
+.courseDiv:hover {
+    border: 1px solid rgb(115, 115, 115);
 }
 
 .media-checkbox {
@@ -47,14 +44,217 @@ p {
     right: 10px;
 }
 
+.media-list {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.5s ease-in-out;
+}
+
+.media-list.expanded {
+    max-height: 3000px;
+
+}
+
+.media-info {
+    display: block;
+    width: 95%;
+}
+
 .media-item {
     margin: 5px;
     padding: 5px;
-    border: 1px solid black;
+    border: 1px solid lightgrey;
     border-radius: 5px;
-    background-color: white;
+    background-color: #f0f0f0;
     display: flex;
     cursor: default;
     font-size: 14px;
 }
 
+#info {
+    display: flex;
+    flex-direction: column;
+    background-color: f5f5f5;
+    margin-bottom: 20px;
+}
+
+.courses {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+#courses {
+    margin-bottom: 75px;
+}
+
+.info-row {
+    width: 100%;
+    /* margin-bottom: 3px; */
+    border: 1px solid black;
+    overflow: hidden;
+    /* We’ll animate the hidden text below */
+    cursor: pointer;
+    transition: border 0.5s ease;
+    background-color: #f5f5f5;
+}
+
+/* Hover effect to show it's clickable/expandable */
+.info-row:hover {
+    border: 1px solid rgb(115, 115, 115);
+}
+
+/* Label section */
+.info-label {
+    font-family: 'Times New Roman', Times, serif;
+    font-size: 16px;
+    color: #ffffff;
+    margin: 0;
+    /* padding: 15px; */
+    position: relative;
+    background-color:#333;
+}
+
+.info-value-wrapper {
+    max-height: 0;
+    overflow: hidden;
+    background-color: #333;
+    transition: all 0.5s ease;
+}
+
+/* Actual text content of the value */
+.info-value {
+    font-family: 'Times New Roman', Times, serif;
+    font-size: 14px;
+    line-height: 1.4;
+    margin: 0;
+    padding: 10px 15px;
+    border-top: 1px solid #e1e1e1;
+    word-break: break-word;
+    /* so large JSON won't overflow */
+}
+
+.info-row.expanded .info-value-wrapper {
+    max-height: 400px;
+}
+
+/* Use different colors to indicate whether data exists or not */
+.info-value.exists {
+    color: #2ecc71;
+}
+
+.info-value.not-found {
+    color: #e74c3c;
+}
+
+#notFound {
+    /* Fix it at the bottom of the page */
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+  
+    /* A subtle background and some padding */
+    background-color: #f9f9f9;
+    padding: 20px;
+  
+    /* A light border or shadow for a "floating" look */
+    border-top: 1px solid #ddd;
+    box-shadow: 0 -2px 5px rgba(0, 0, 0, 0.1);
+  
+    /* Text styling */
+    font-family: 'Times New Roman', Times, serif;
+    font-size: 14px;
+    color: #333;
+    line-height: 1.5;
+    text-align: center;
+  }
+  
+#instructionContent {
+    max-height: 0;
+    position: fixed;
+    bottom: 70px; /* Sit just above the button */
+    right: 20px;
+    z-index: 9998;
+    width: 400px;
+    background-color: #f9f9f9;
+    border: 0;
+    box-shadow: 0;
+    border-radius: 20px;
+    padding: 0px;
+    font-family: 'Times New Roman', Times, serif;
+    color: #333;
+    line-height: 1.4;
+    overflow: hidden;
+    transition: all 0.5s ease;
+
+    text-align: left;
+}
+
+#instructionContent.show {
+    max-height: 400px;
+    border: 1px solid #ddd;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    padding: 5%;
+    border-radius: 0;
+    text-align: left;
+    
+}
+
+#instructionBtn {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 9999;
+    padding: 10px 15px;
+    font-size: 14px;
+    background-color: #007bff;
+    color: #fff;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+#instructionBtn:hover {
+    background-color: #0056b3;
+}
+
+#download-button {
+    position: fixed;
+    bottom: 20px;
+    left: 20px;
+    z-index: 9999;
+    padding: 10px 15px;
+    font-size: 14px;
+    background-color: #007bff;
+    color: #fff;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+#download-button:hover {
+    background-color: #0056b3;
+}
+
+#instructionCloseBtn {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 9999; /* Ensure it stays on top */
+
+    width: 25px;
+    height: 25px;
+    background-color: #007bff;
+    color: #fff;
+    border: none;
+    border-radius: 100%;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+#instructionCloseBtn:hover {
+    background-color: #0056b3;
+}
