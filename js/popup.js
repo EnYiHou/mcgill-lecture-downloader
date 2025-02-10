@@ -1,4 +1,63 @@
 
+const { createFFmpeg, fetchFile } = FFmpeg;
+
+
+
+async function runFFmpeg(inputFileName, outputFileName, commandStr, fileOrUrl) {
+  let ffmpeg = createFFmpeg({
+    corePath: chrome.runtime.getURL("lib/ffmpeg-core.js"),
+    log: false,
+    mainName: 'main'
+  });
+
+  if (!ffmpeg.isLoaded()) {
+    await ffmpeg.load();
+  }
+
+  const commandList = commandStr.trim().split(/\s+/);
+  if (commandList.shift() !== 'ffmpeg') {
+    alert('Please start the command with "ffmpeg"');
+    return;
+  }
+
+  ffmpeg.FS('writeFile', inputFileName, await fetchFile(fileOrUrl));
+
+  console.log('Running FFmpeg command:', commandList);
+
+  try {
+    await ffmpeg.run(...commandList);
+  } catch (err) {
+    console.error('Error running FFmpeg:', err);
+    alert(`Error running FFmpeg: ${err.message || err}`);
+    return;
+  }
+  try {
+    const data = ffmpeg.FS('readFile', outputFileName);
+    const blob = new Blob([data.buffer], { type: 'video/mp4' });
+
+    ffmpeg.FS('unlink', inputFileName);
+    ffmpeg.FS('unlink', outputFileName);
+
+    downloadFile(blob, outputFileName);
+  }
+  catch (error) {
+    console.error('Error during file processing:', error);
+  }
+}
+
+function downloadFile(blob, fileName) {
+  try {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
+  catch (error) {
+    console.error('Unable to create download link or download file:', error);
+  }
+}
 
 
 let bearer;
@@ -7,8 +66,35 @@ let etime;
 let coursesList;
 let processedCourses = [];
 let downloadingCourses = [];
+let downloadedItems = new Set();
 
-// main - [info, courses]
+
+let overwriteDownloadedItems = async () => {
+  console.log('Updating downloaded items:', downloadedItems);
+  let downloadedItemsArray = Array.from(downloadedItems);
+  await new Promise((resolve, reject) => {
+    chrome.storage.local.set({ downloadedItems: downloadedItemsArray }, () => {
+      if (chrome.runtime.lastError) {
+        reject(chrome.runtime.lastError);
+      } else {
+        resolve();
+      }
+    });
+  }).then(() => {
+    console.log('Downloaded items have been updated');
+
+    // Make all downloaded items green
+    const mediaItems = Array.from(document.querySelectorAll('.media-item'));
+    mediaItems.forEach(item => {
+      const filename = item.getAttribute('filename');
+      if (downloadedItems.has(filename)) {
+        item.style.backgroundColor = 'lightgreen';
+      }
+    });
+  });
+};
+
+
 let info_div = document.createElement("div");
 let courses_div = document.createElement("div");
 
@@ -68,32 +154,32 @@ instructionContent.appendChild(features);
 document.body.appendChild(instructionContent);
 
 
-// 2. CREATE THE INSTRUCTIONS BUTTON
 const instructionBtn = document.createElement("button");
 instructionBtn.id = "instructionBtn";
 instructionBtn.textContent = "Instructions";
 
 
-// 3. TOGGLE INSTRUCTIONS VISIBILITY ON BUTTON CLICK
 instructionBtn.addEventListener("click", () => {
   instructionContent.classList.toggle("show");
 });
 
-// 4. APPEND TO THE DOCUMENT
 document.body.appendChild(instructionBtn);
 
-let downloadedItems = [];
 (async () => {
-  downloadedItems = await new Promise((resolve, reject) => {
-    chrome.storage.local.get({ downloadedItems: [] }, (result) => {
+  const result = await new Promise((resolve, reject) => {
+    chrome.storage.local.get({ downloadedItems: [] }, (res) => {
       if (chrome.runtime.lastError) {
         reject(chrome.runtime.lastError);
       } else {
-        resolve(result.downloadedItems);
+        resolve(res);
       }
     });
   });
+
+  const downloadedItemsArray = Array.isArray(result.downloadedItems) ? result.downloadedItems : [];
+  downloadedItems = new Set(downloadedItemsArray);
 })();
+
 
 function removeItemAll(arr, value) {
   var i = 0;
@@ -123,7 +209,6 @@ async function getPayLoad(cookie, courseDigit) {
     const data = await response.text();
     const inputFields = extractPayload(data);
 
-    // Convert input fields to URLSearchParams
     return inputFields;
   } catch (error) {
     console.error('Error:', error);
@@ -196,7 +281,7 @@ function setDownloadButton() {
   downloadButton.addEventListener('click', async (event) => {
     event.preventDefault();
     event.stopPropagation()
-    let mediaItems = document.querySelectorAll('input[type="checkbox"]:checked');
+    let mediaItems = Array.from(document.querySelectorAll('.media-checkbox:checked'));
     if (mediaItems.length === 0) {
       alert('No media selected');
       return;
@@ -214,13 +299,13 @@ function setDownloadButton() {
       downloadMedia(item.value, fileName, item.getAttribute('videoType'));
     });
 
-    // console.log('Selected media IDs: ', mediaIDs);
+
 
 
   });
 
 }
-async function getFileSize(url, params) {
+async function getFileSize(url, params, tryCount = 10) {
   try {
     const paramString = new URLSearchParams(params).toString();
     const fullUrl = `${url}?${paramString}`;
@@ -234,105 +319,67 @@ async function getFileSize(url, params) {
 
     const contentRange = response.headers.get('Content-Range');
     const totalBytes = parseInt(contentRange.split('/')[1], 10);
-    // console.log("Full url: ", fullUrl);
+
     return totalBytes;
   } catch (error) {
-    console.error('Error getting file size:', error);
-
-    clearMainDiv();
-
-    throw error;
+    if (tryCount > 0) {
+      return getFileSize(url, params, tryCount - 1);
+    } else {
+      throw error;
+    }
   }
 }
+
 
 async function downloadMedia(rid, filename, f = "VGA") {
   try {
     downloadingCourses.push(rid);
-    const params = {
-      f: f,
-      rid: rid,
-      stoken: stoken,
-      etime: etime,
-    };
 
+    const params = { f, rid, stoken, etime };
     const totalBytes = await getFileSize("https://lrscdn.mcgill.ca/api/tsmedia/", params);
-    // console.log(`Total bytes: ${totalBytes}`);
 
-    const headers = {
-      "Range": `bytes=0-${totalBytes - 1}`,
-    };
-
+    const headers = { "Range": `bytes=0-${totalBytes - 1}` };
     const paramString = new URLSearchParams(params).toString();
     const fullUrl = `https://lrscdn.mcgill.ca/api/tsmedia/?${paramString}`;
-    const response = await fetch(fullUrl, {
-      method: 'GET',
-      headers: headers,
-    });
 
-    if (response.status === 206) {
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-
-      chrome.downloads.download({
-        url: url,
-        filename: `${filename}.ts`,
-        saveAs: false
-      }, (downloadId) => {
-        if (chrome.runtime.lastError) {
-          console.error(`Error downloading video: ${chrome.runtime.lastError}`);
-          alert(`Error downloading video: ${chrome.runtime.lastError}`);
-        } else {
-          // console.log('Download started with ID:', downloadId);
-        }
-      });
-    } else {
-      console.error(`Error downloading video: ${response.status}`);
-      alert(`Error downloading video: ${response.status}`);
+    const response = await fetch(fullUrl, { method: 'GET', headers });
+    if (response.status !== 206) {
+      console.error(`Error downloading .ts file: ${response.status}`);
+      alert(`Error: ${response.status}`);
+      return;
     }
+
+    const tsBlob = await response.blob();
+
+    const inputFileName = 'input.ts';
+    const outputFileName = `${filename}.mp4`;
+    const commandStr = `ffmpeg -y -i ${inputFileName} -c copy ${outputFileName}`;
+
+    await runFFmpeg(inputFileName, outputFileName, commandStr, tsBlob);
 
     removeItemAll(downloadingCourses, rid);
-    let result = await new Promise((resolve, reject) => {
-      chrome.storage.local.get({ downloadedItems: [] }, (result) => {
-        if (chrome.runtime.lastError) {
-          reject(chrome.runtime.lastError);
-        } else {
-          resolve(result);
-        }
-      });
-    });
 
-    let downloadedItems = result.downloadedItems;
-    if (!downloadedItems.includes(filename)) {
-      downloadedItems.push(filename);
-    }
-    document.querySelectorAll(`div[filename="${filename}"]`).forEach(div => {
-      div.style.backgroundColor = 'lightgreen';
-    });
 
-    await new Promise((resolve, reject) => {
-      chrome.storage.local.set({ downloadedItems: downloadedItems }, () => {
-        if (chrome.runtime.lastError) {
-          reject(chrome.runtime.lastError);
-        } else {
-          console.log(`Item ${filename} has been marked as downloaded.`);
-          resolve();
-        }
-      });
-    });
+    downloadedItems.add(filename);
+
+    // Convert Set back to an array for storage
+    await overwriteDownloadedItems();
 
 
     if (downloadingCourses.length === 0) {
-      alert('All downloads completed');
+      // alert('All downloads completed');
       let downloadButton = document.getElementById('download-button');
       downloadButton.disabled = false;
       downloadButton.style.backgroundColor = 'blue';
       downloadButton.textContent = 'Download';
       downloadButton.style.pointer = "pointer";
     }
+
   } catch (error) {
     removeItemAll(downloadingCourses, rid);
+
     if (downloadingCourses.length === 0) {
-      alert('All downloads completed');
+      // alert('All downloads completed');
       let downloadButton = document.getElementById('download-button');
       downloadButton.disabled = false;
       downloadButton.style.backgroundColor = 'blue';
@@ -340,19 +387,20 @@ async function downloadMedia(rid, filename, f = "VGA") {
       downloadButton.style.pointer = "pointer";
     }
     console.error('Error downloading media:', error);
-    alert('Error downloading media:', error);
+    alert(`Error downloading media: ${error.message || error}`);
   }
 }
 
+
+
 async function createCourseDiv(courseDigit, context_title = null, courseListID = null) {
-  // console.log(courseDigit);
+
   if (courseDigit == null) {
     return;
   }
   let mediaList = await getCourseMediaList(courseDigit, bearer);
-  // console.log("Media List: ", mediaList);
 
-  // Create the course div
+
   let courseDiv = document.createElement('div');
   courseDiv.setAttribute('courseDigit', courseDigit);
   courseDiv.className = 'courseDiv';
@@ -376,7 +424,7 @@ async function createCourseDiv(courseDigit, context_title = null, courseListID =
   courseDiv.appendChild(courseDivTitle);
 
 
-  // Create the media list div
+
   let mediaListDiv = document.createElement('div');
   mediaListDiv.className = 'media-list';
   mediaListDiv.classList.add('media-list');
@@ -384,98 +432,146 @@ async function createCourseDiv(courseDigit, context_title = null, courseListID =
   let selectAllDiv = document.createElement('div');
   selectAllDiv.className = 'select-all-div';
 
-  // Create the "Select All" checkbox
+
   let selectAllCheckbox = document.createElement("input");
   selectAllCheckbox.type = "checkbox";
   selectAllCheckbox.className = "select-all-checkbox";
 
-  // Create the label for "Select All"
+
   let selectAllLabel = document.createElement("label");
   selectAllLabel.textContent = "Select All";
 
-  // Append checkbox and label to selectAllDiv
+
   selectAllDiv.append(selectAllCheckbox, selectAllLabel);
 
-  // Get all checkboxes (assuming they have a class)
+
   let checkboxes = Array.from(document.querySelectorAll(".checkbox-class")); // Update with actual checkbox class
 
-  // Function to toggle all checkboxes
+
   const toggleCheckboxes = (isChecked) => {
     checkboxes.forEach(checkbox => checkbox.checked = isChecked);
   };
 
-  // Event listener for the checkbox itself
-  selectAllCheckbox.addEventListener("change", (event) => {
-    event.stopPropagation(); // Prevent bubbling to selectAllDiv
-    toggleCheckboxes(selectAllCheckbox.checked);
-  });
-
-  // Prevent checkbox click from triggering the div's click event
-  selectAllCheckbox.addEventListener("click", (event) => {
-    event.stopPropagation();
-  });
-
-  // Event listener for the div (alternative selection)
-  selectAllDiv.addEventListener("click", (event) => {
-    event.stopPropagation();
-    selectAllCheckbox.checked = !selectAllCheckbox.checked;
-    toggleCheckboxes(selectAllCheckbox.checked);
-  });
-
-  // Append the selectAllDiv to mediaListDiv
   mediaListDiv.appendChild(selectAllDiv);
 
 
 
-  // Populate the media list
+  let selectNotDownloadedDiv = document.createElement('div');
+  selectNotDownloadedDiv.className = 'select-not-downloaded-div';
+
+  let selectNotDownloadedCheckbox = document.createElement("input");
+  selectNotDownloadedCheckbox.type = "checkbox";
+  selectNotDownloadedCheckbox.className = "select-not-downloaded-checkbox";
+
+  let selectNotDownloadedLabel = document.createElement("label");
+  selectNotDownloadedLabel.textContent = "Select Not Downloaded";
+
+  selectNotDownloadedDiv.append(selectNotDownloadedCheckbox, selectNotDownloadedLabel);
+
+  const toggleNotDownloadedCheckboxes = (isChecked) => {
+    checkboxes.forEach(checkbox => {
+      const filename = checkbox.getAttribute('filename');
+      if (downloadedItems.has(filename)) {
+        return;
+      }
+      checkbox.checked = isChecked;
+    });
+  };
+
+  mediaListDiv.appendChild(selectNotDownloadedDiv);
+
+
+  const checkAllChecked = () => {
+    const allChecked = Array.from(checkboxes).every(checkbox => checkbox.checked);
+    selectAllCheckbox.checked = allChecked;
+  };
+
+  const checkNotDownloadedChecked = () => {
+    const notDownloadedChecked = Array.from(checkboxes).filter(checkbox => {
+      const filename = checkbox.getAttribute('filename');
+      return !downloadedItems.has(filename);
+    }).every(checkbox => checkbox.checked) && checkboxes.some(checkbox => !downloadedItems.has(checkbox.getAttribute('filename')));
+
+    selectNotDownloadedCheckbox.checked = notDownloadedChecked;
+  };
+
+
+
+
+  selectAllCheckbox.addEventListener("change", (event) => {
+    event.stopPropagation();
+    toggleCheckboxes(selectAllCheckbox.checked);
+    checkAllChecked();
+    checkNotDownloadedChecked();
+  });
+
+
+  selectAllCheckbox.addEventListener("click", (event) => {
+    event.stopPropagation();
+  });
+
+
+  selectAllDiv.addEventListener("click", (event) => {
+    event.stopPropagation();
+    selectAllCheckbox.checked = !selectAllCheckbox.checked;
+    toggleCheckboxes(selectAllCheckbox.checked);
+    checkAllChecked();
+    checkNotDownloadedChecked();
+  });
+
+
+
+  selectNotDownloadedCheckbox.addEventListener("change", (event) => {
+    event.stopPropagation();
+    toggleNotDownloadedCheckboxes(selectNotDownloadedCheckbox.checked);
+    checkAllChecked();
+    checkNotDownloadedChecked();
+  });
+
+  selectNotDownloadedCheckbox.addEventListener("click", (event) => {
+    event.stopPropagation();
+  });
+
+  selectNotDownloadedDiv.addEventListener("click", (event) => {
+    event.stopPropagation();
+    selectNotDownloadedCheckbox.checked = !selectNotDownloadedCheckbox.checked;
+    toggleNotDownloadedCheckboxes(selectNotDownloadedCheckbox.checked);
+    checkAllChecked();
+    checkNotDownloadedChecked();
+  });
+
+
+
+
+
   for (let i = 0; i < mediaList.length; i++) {
     let media = mediaList[i];
     let mediaItem = document.createElement('div');
 
 
 
-    let filename = `${i}_${context_title}`;
+    let filename = `${mediaList[0].courseName}_${i}`.replace(/\s+/g, '');
 
     mediaItem.addEventListener('contextmenu', async (event) => {
       event.stopPropagation();
       event.preventDefault();
 
-
-      let downloadedItems = await new Promise((resolve, reject) => {
-        chrome.storage.local.get({ downloadedItems: [] }, (result) => {
-          if (chrome.runtime.lastError) {
-            reject(chrome.runtime.lastError);
-          } else {
-            resolve(result.downloadedItems);
-          }
-        });
-      });
-
-      if (!downloadedItems.includes(filename)) {
-        downloadedItems.push(filename);
+      if (!downloadedItems.has(filename)) {
+        downloadedItems.add(filename);
         mediaItem.style.backgroundColor = 'lightgreen';
       } else {
-        downloadedItems = removeItemAll(downloadedItems, filename);
+        downloadedItems.delete(filename);
         mediaItem.style.backgroundColor = '#f0f0f0';
       }
 
-      await new Promise((resolve, reject) => {
-        chrome.storage.local.set({ downloadedItems: downloadedItems }, () => {
-          if (chrome.runtime.lastError) {
-            reject(chrome.runtime.lastError);
-          } else {
-            console.log(`Item ${filename} has been added to downloaded items.`);
-            resolve();
-          }
-        });
-      });
+      await overwriteDownloadedItems();
 
     });
 
 
     mediaItem.setAttribute('filename', filename);
 
-    if (downloadedItems.includes(filename)) {
+    if (downloadedItems.has(filename)) {
       mediaItem.style.backgroundColor = 'lightgreen';
     }
 
@@ -484,12 +580,12 @@ async function createCourseDiv(courseDigit, context_title = null, courseListID =
     mediaInfo.className = 'media-info';
     mediaItem.appendChild(mediaInfo);
 
-    // Add recording name
+
     let recordingName = document.createElement('p');
     recordingName.innerHTML = "<strong>Recording Name:</strong> " + (media.recordingName ? media.recordingName : "Recording Name Unavailable");
     mediaInfo.appendChild(recordingName);
 
-    // Add recording time
+
     let recordingTime = document.createElement('p');
     recordingTime.innerHTML = "<strong>Recording Time:</strong> " + media.recordingTime;
     mediaInfo.appendChild(recordingTime);
@@ -497,7 +593,7 @@ async function createCourseDiv(courseDigit, context_title = null, courseListID =
     let downloadFileNames = document.createElement('p');
     downloadFileNames.innerHTML = "<strong>Download File Name:</strong> " + filename; mediaInfo.appendChild(downloadFileNames);
 
-    // Add checkbox
+
     let checkbox = document.createElement('input');
     checkbox.className = 'media-checkbox';
     checkbox.type = 'checkbox';
@@ -512,8 +608,8 @@ async function createCourseDiv(courseDigit, context_title = null, courseListID =
     mediaItem.addEventListener('click', (event) => {
       event.stopPropagation();
       checkbox.checked = !checkbox.checked;
-      const allChecked = Array.from(checkboxes).every(checkbox => checkbox.checked);
-      selectAllCheckbox.checked = allChecked;
+      checkAllChecked();
+      checkNotDownloadedChecked();
     });
 
     mediaItem.appendChild(checkbox);
@@ -523,14 +619,14 @@ async function createCourseDiv(courseDigit, context_title = null, courseListID =
     mediaListDiv.appendChild(mediaItem);
   };
 
-  // Append media list to course div 
+
   courseDiv.appendChild(mediaListDiv);
 
-  // Add click event to toggle media list
+
   courseDiv.addEventListener('click', () => {
     mediaListDiv.classList.toggle('expanded');
   });
-  courseDiv.addEventListener('contextmenu', async function (ev) {
+  courseDivTitle.addEventListener('contextmenu', async function (ev) {
     ev.preventDefault();
     const CourseListIDDigits = await getFromStorage("CoursesList");
     let CoursesListDigits = CourseListIDDigits.CoursesList.coursesList;
@@ -576,7 +672,7 @@ async function createCourseDiv(courseDigit, context_title = null, courseListID =
     return false;
   }, false);
 
-  // Append course div to main container
+
   courses_div.insertBefore(courseDiv, courses_div.firstChild);
 }
 
@@ -586,8 +682,8 @@ async function processCourse(course, cookies, bearer) {
   let courseIDHTML = await getHFCourseIDHTML(payload);
   let courseDigit = extractHFCourseID(courseIDHTML);
   if (courseDigit == null) {
-    // console.log("Course digit not found");
-    // console.log("Course ID: ", payload);
+
+
   }
   processedCourses.push(courseDigit);
   createCourseDiv(courseDigit, context_title, course);
@@ -629,17 +725,17 @@ document.addEventListener('DOMContentLoaded', async function () {
       labelEl.classList.add("info-label");
       labelEl.textContent = labelText;
 
-      // We'll wrap the value in a separate div so we can animate its max-height
+
       const valueWrapper = document.createElement("div");
       valueWrapper.classList.add("info-value-wrapper");
 
       const valueEl = document.createElement("p");
       valueEl.classList.add("info-value");
-      // Add a class for coloring
+
       valueEl.classList.add(exists ? "exists" : "not-found");
       valueEl.textContent = valueText;
 
-      // Toggle expand on label click
+
       labelEl.addEventListener("click", () => {
         rowDiv.classList.toggle("expanded");
       });
@@ -655,13 +751,13 @@ document.addEventListener('DOMContentLoaded', async function () {
       return rowDiv;
     }
 
-    // 2. Fetch data (example usage)
+
     const recordingsInfoResult = await getFromStorage("RecordingsInfo");
     const mediaRecordingsResult = await getFromStorage("MediaRecordings");
     const coursesListResult = await getFromStorage("CoursesList");
     const cookiesResult = await getFromStorage("Cookies");
 
-    // 3. Build and append each row
+
     info_div.appendChild(
       createRow(
         "Recordings Info",
@@ -719,11 +815,11 @@ document.addEventListener('DOMContentLoaded', async function () {
 
 
 
-    // console.log("bearer: ", bearer);
-    // console.log("stoken: ", stoken);
-    // console.log("etime: ", etime);
-    // console.log("coursesList: ", coursesList);
-    // console.log("cookies: ", cookies);
+
+
+
+
+
 
 
     if (!stoken || !etime || !bearer || !coursesList || !cookies) {
