@@ -194,7 +194,7 @@ p {
 }
 
 #instructionContent {
-    max-height: 0;
+    height: 0px;
     position: fixed;
     bottom: 70px;
     /* Sit just above the button */
@@ -202,7 +202,6 @@ p {
     z-index: 9998;
     width: 0px;
     background-color: #f9f9f9;
-    box-shadow: 0;
     border-radius: 100%;
     padding: 0px;
     font-family: 'Times New Roman', Times, serif;
@@ -217,12 +216,28 @@ p {
 #instructionContent.show {
     border-radius: 5px;
     width: 400px;
-    max-height: 400px;
+    height: 400px;
     border: 1px solid #ddd;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 1);
     padding: 5%;
     text-align: left;
 
+}
+
+#instructionContentText {
+
+    position: relative;
+    top: 0px;
+    left: 0px;
+    z-index: 9998;
+    background-color: #f9f9f9;
+    font-family: 'Times New Roman', Times, serif;
+    color: #333;
+    line-height: 1.4;
+    overflow: hidden;
+    width: 400px;
+    height: 400px;
+    text-align: left;
 }
 
 #instructionBtn {
