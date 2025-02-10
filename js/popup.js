@@ -356,15 +356,57 @@ async function createCourseDiv(courseDigit, context_title = null, courseListID =
   let courseDiv = document.createElement('div');
   courseDiv.setAttribute('courseDigit', courseDigit);
   courseDiv.className = 'courseDiv';
+
+
   if (context_title == null) {
     context_title = mediaList[0].courseName;
   }
-  courseDiv.textContent = `${context_title}, ID: ${courseDigit}`;
+  let courseDivTitle = document.createElement('div');
+  courseDivTitle.className = 'courseDivTitle';
+  let courseDivTitleText = document.createElement('p');
+  courseDivTitleText.textContent = context_title + ", ID: " + courseDigit;
+
+
+  courseDivTitle.appendChild(courseDivTitleText);
+
+  let dropDownIcon = document.createElement('i');
+  dropDownIcon.className = 'fas fa-caret-down';
+  courseDivTitle.appendChild(dropDownIcon);
+
+  courseDiv.appendChild(courseDivTitle);
+
 
   // Create the media list div
   let mediaListDiv = document.createElement('div');
   mediaListDiv.className = 'media-list';
   mediaListDiv.classList.add('media-list');
+
+  let selectAllDiv = document.createElement('div');
+  selectAllDiv.className = 'select-all-div';
+
+  let selectAllCheckbox = document.createElement('input');
+  selectAllCheckbox.type = 'checkbox';
+  selectAllCheckbox.className = 'select-all-checkbox';
+
+  let checkboxes = [];
+
+  selectAllDiv.addEventListener('click', (event) => {
+    event.stopPropagation();
+    selectAllCheckbox.checked = !selectAllCheckbox.checked;
+
+    checkboxes.forEach(checkbox => {
+      checkbox.checked = selectAllCheckbox.checked;
+    });
+  });
+
+  
+
+  selectAllDiv.appendChild(selectAllCheckbox);
+  let selectAllLabel = document.createElement('label');
+  selectAllLabel.textContent = 'Select All';
+  selectAllDiv.appendChild(selectAllLabel);
+
+  mediaListDiv.appendChild(selectAllDiv);
 
 
   // Populate the media list
@@ -444,7 +486,18 @@ async function createCourseDiv(courseDigit, context_title = null, courseListID =
     checkbox.setAttribute('filename', filename);
     checkbox.setAttribute('videoType', media.sources[0].label);
     checkbox.value = media.id;
+
+    checkbox.addEventListener('click', (event) => {
+      event.stopPropagation();
+    });
+
+    mediaItem.addEventListener('click', (event) => {
+      event.stopPropagation();
+      checkbox.checked = !checkbox.checked;
+    });
+
     mediaItem.appendChild(checkbox);
+    checkboxes.push(checkbox);
 
     mediaItem.addEventListener('click', (event) => {
       event.stopPropagation();
