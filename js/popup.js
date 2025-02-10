@@ -456,7 +456,7 @@ async function createCourseDiv(courseDigit, context_title = null, courseListID =
         mediaItem.style.backgroundColor = 'lightgreen';
       } else {
         downloadedItems = removeItemAll(downloadedItems, filename);
-        mediaItem.style.backgroundColor = 'lightgrey';
+        mediaItem.style.backgroundColor = '#f0f0f0';
       }
 
       await new Promise((resolve, reject) => {
@@ -756,6 +756,6 @@ function clearMainDiv() {
   while (courses_div.firstChild) {
     courses_div.removeChild(courses_div.firstChild);
   }
-  courses_div.appendChild(notFound);
+  courses_div.appendChild(cannotFindCourses);
 
 }
