@@ -108,6 +108,12 @@ document.body.appendChild(courses_div);
 
 const instructionContent = document.createElement("div");
 instructionContent.id = "instructionContent";
+
+const instructionContentText = document.createElement("div");
+instructionContentText.id = "instructionContentText";
+
+instructionContent.appendChild(instructionContentText);
+
 instructionContent.classList.add("show");
 
 
@@ -133,10 +139,10 @@ cannotFindCourses.innerHTML = `
   </ol>
 `;
 
-instructionContent.appendChild(cannotFindCourses);
+instructionContentText.appendChild(cannotFindCourses);
 
 const seperator = document.createElement("hr");
-instructionContent.appendChild(seperator);
+instructionContentText.appendChild(seperator);
 
 const features = document.createElement("div");
 features.innerHTML = `
@@ -148,7 +154,7 @@ features.innerHTML = `
   </ul>
 `;
 
-instructionContent.appendChild(features);
+instructionContentText.appendChild(features);
 
 
 document.body.appendChild(instructionContent);
@@ -156,7 +162,7 @@ document.body.appendChild(instructionContent);
 
 const instructionBtn = document.createElement("button");
 instructionBtn.id = "instructionBtn";
-instructionBtn.textContent = "Instructions";
+instructionBtn.textContent = "Help";
 
 
 instructionBtn.addEventListener("click", () => {
