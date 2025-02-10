@@ -41,7 +41,7 @@ p {
 
 .courseDivTitle {
     display: flex;
-    justify-content:space-between;
+    justify-content: space-between;
     flex-direction: row;
     align-items: center;
 }
@@ -53,17 +53,19 @@ p {
     cursor: pointer;
     right: 10px;
 }
-
 .media-list {
     max-height: 0;
     overflow: hidden;
-    transition: max-height 0.5s ease-in-out;
+    transform: scaleY(0);
+    transform-origin: top;
+    transition: max-height 0.3s ease, transform 0.3s ease;
 }
 
 .media-list.expanded {
-    max-height: 3000px;
-
+    max-height: 3000px; 
+    transform: scaleY(1);
 }
+
 
 .media-info {
     display: block;
@@ -127,14 +129,7 @@ p {
     margin: 0;
     /* padding: 15px; */
     position: relative;
-    background-color:#4a4a4a;
-}
-
-.info-value-wrapper {
-    max-height: 0;
-    overflow: hidden;
-    background-color: #333;
-    transition: all 0.5s ease;
+    background-color: #4a4a4a;
 }
 
 /* Actual text content of the value */
@@ -146,11 +141,25 @@ p {
     padding: 10px 15px;
     border-top: 1px solid #e1e1e1;
     word-break: break-word;
+    
     /* so large JSON won't overflow */
 }
 
+
+.info-value-wrapper {
+
+    max-height: 0;
+    overflow: hidden;
+    transform: scaleY(0);
+    transform-origin: top;
+    transition: all 0.3s ease;
+    background-color: #333;
+}
+
+
 .info-row.expanded .info-value-wrapper {
     max-height: 400px;
+    transform: scaleY(1);
 }
 
 /* Use different colors to indicate whether data exists or not */
@@ -168,34 +177,34 @@ p {
     bottom: 0;
     left: 0;
     right: 0;
-  
+
     /* A subtle background and some padding */
     background-color: #f9f9f9;
     padding: 20px;
-  
+
     /* A light border or shadow for a "floating" look */
     border-top: 1px solid #ddd;
     box-shadow: 0 -2px 5px rgba(0, 0, 0, 0.1);
-  
+
     /* Text styling */
     font-family: 'Times New Roman', Times, serif;
     font-size: 14px;
     color: #333;
     line-height: 1.5;
     text-align: center;
-  }
-  
+}
+
 #instructionContent {
     max-height: 0;
     position: fixed;
-    bottom: 70px; /* Sit just above the button */
+    bottom: 70px;
+    /* Sit just above the button */
     right: 20px;
     z-index: 9998;
     width: 400px;
     background-color: #f9f9f9;
-    border: 0;
     box-shadow: 0;
-    border-radius: 20px;
+    border-radius: 100%;
     padding: 0px;
     font-family: 'Times New Roman', Times, serif;
     color: #333;
@@ -207,13 +216,13 @@ p {
 }
 
 #instructionContent.show {
+    border-radius: 5px;
     max-height: 400px;
     border: 1px solid #ddd;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 1);
     padding: 5%;
-    border-radius: 0;
     text-align: left;
-    
+
 }
 
 #instructionBtn {
@@ -258,7 +267,8 @@ p {
     position: absolute;
     top: 10px;
     right: 10px;
-    z-index: 9999; /* Ensure it stays on top */
+    z-index: 9999;
+    /* Ensure it stays on top */
 
     width: 25px;
     height: 25px;
@@ -276,7 +286,7 @@ p {
 
 .select-all-div {
     display: flex;
-    justify-content:left;
+    justify-content: left;
     align-items: center;
     margin: 5px;
     width: 100px;
@@ -288,6 +298,7 @@ p {
     cursor: pointer;
 
 }
+
 .select-all-div:hover {
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
 }

@@ -384,29 +384,47 @@ async function createCourseDiv(courseDigit, context_title = null, courseListID =
   let selectAllDiv = document.createElement('div');
   selectAllDiv.className = 'select-all-div';
 
-  let selectAllCheckbox = document.createElement('input');
-  selectAllCheckbox.type = 'checkbox';
-  selectAllCheckbox.className = 'select-all-checkbox';
+  // Create the "Select All" checkbox
+  let selectAllCheckbox = document.createElement("input");
+  selectAllCheckbox.type = "checkbox";
+  selectAllCheckbox.className = "select-all-checkbox";
 
-  let checkboxes = [];
+  // Create the label for "Select All"
+  let selectAllLabel = document.createElement("label");
+  selectAllLabel.textContent = "Select All";
 
-  selectAllDiv.addEventListener('click', (event) => {
-    event.stopPropagation();
-    selectAllCheckbox.checked = !selectAllCheckbox.checked;
+  // Append checkbox and label to selectAllDiv
+  selectAllDiv.append(selectAllCheckbox, selectAllLabel);
 
-    checkboxes.forEach(checkbox => {
-      checkbox.checked = selectAllCheckbox.checked;
-    });
+  // Get all checkboxes (assuming they have a class)
+  let checkboxes = Array.from(document.querySelectorAll(".checkbox-class")); // Update with actual checkbox class
+
+  // Function to toggle all checkboxes
+  const toggleCheckboxes = (isChecked) => {
+    checkboxes.forEach(checkbox => checkbox.checked = isChecked);
+  };
+
+  // Event listener for the checkbox itself
+  selectAllCheckbox.addEventListener("change", (event) => {
+    event.stopPropagation(); // Prevent bubbling to selectAllDiv
+    toggleCheckboxes(selectAllCheckbox.checked);
   });
 
-  
+  // Prevent checkbox click from triggering the div's click event
+  selectAllCheckbox.addEventListener("click", (event) => {
+    event.stopPropagation();
+  });
 
-  selectAllDiv.appendChild(selectAllCheckbox);
-  let selectAllLabel = document.createElement('label');
-  selectAllLabel.textContent = 'Select All';
-  selectAllDiv.appendChild(selectAllLabel);
+  // Event listener for the div (alternative selection)
+  selectAllDiv.addEventListener("click", (event) => {
+    event.stopPropagation();
+    selectAllCheckbox.checked = !selectAllCheckbox.checked;
+    toggleCheckboxes(selectAllCheckbox.checked);
+  });
 
+  // Append the selectAllDiv to mediaListDiv
   mediaListDiv.appendChild(selectAllDiv);
+
 
 
   // Populate the media list
@@ -477,7 +495,7 @@ async function createCourseDiv(courseDigit, context_title = null, courseListID =
     mediaInfo.appendChild(recordingTime);
 
     let downloadFileNames = document.createElement('p');
-    downloadFileNames.innerHTML = "<strong>Download File Name:</strong> " + filename;   mediaInfo.appendChild(downloadFileNames);
+    downloadFileNames.innerHTML = "<strong>Download File Name:</strong> " + filename; mediaInfo.appendChild(downloadFileNames);
 
     // Add checkbox
     let checkbox = document.createElement('input');
@@ -494,14 +512,13 @@ async function createCourseDiv(courseDigit, context_title = null, courseListID =
     mediaItem.addEventListener('click', (event) => {
       event.stopPropagation();
       checkbox.checked = !checkbox.checked;
+      const allChecked = Array.from(checkboxes).every(checkbox => checkbox.checked);
+      selectAllCheckbox.checked = allChecked;
     });
 
     mediaItem.appendChild(checkbox);
     checkboxes.push(checkbox);
 
-    mediaItem.addEventListener('click', (event) => {
-      event.stopPropagation();
-    });
 
     mediaListDiv.appendChild(mediaItem);
   };
@@ -603,25 +620,25 @@ document.addEventListener('DOMContentLoaded', async function () {
 
   setDownloadButton();
   try {
-    
+
     function createRow(labelText, valueText, exists) {
       const rowDiv = document.createElement("div");
       rowDiv.classList.add("info-row");
-    
+
       const labelEl = document.createElement("p");
       labelEl.classList.add("info-label");
       labelEl.textContent = labelText;
-    
+
       // We'll wrap the value in a separate div so we can animate its max-height
       const valueWrapper = document.createElement("div");
       valueWrapper.classList.add("info-value-wrapper");
-    
+
       const valueEl = document.createElement("p");
       valueEl.classList.add("info-value");
       // Add a class for coloring
       valueEl.classList.add(exists ? "exists" : "not-found");
       valueEl.textContent = valueText;
-    
+
       // Toggle expand on label click
       labelEl.addEventListener("click", () => {
         rowDiv.classList.toggle("expanded");
@@ -630,20 +647,20 @@ document.addEventListener('DOMContentLoaded', async function () {
       valueWrapper.addEventListener("click", () => {
         rowDiv.classList.toggle("expanded");
       });
-    
+
       valueWrapper.appendChild(valueEl);
       rowDiv.appendChild(labelEl);
       rowDiv.appendChild(valueWrapper);
-    
+
       return rowDiv;
     }
-    
+
     // 2. Fetch data (example usage)
     const recordingsInfoResult = await getFromStorage("RecordingsInfo");
     const mediaRecordingsResult = await getFromStorage("MediaRecordings");
     const coursesListResult = await getFromStorage("CoursesList");
     const cookiesResult = await getFromStorage("Cookies");
-    
+
     // 3. Build and append each row
     info_div.appendChild(
       createRow(
@@ -654,7 +671,7 @@ document.addEventListener('DOMContentLoaded', async function () {
         !!recordingsInfoResult.RecordingsInfo
       )
     );
-    
+
     info_div.appendChild(
       createRow(
         "Media Recordings",
@@ -664,7 +681,7 @@ document.addEventListener('DOMContentLoaded', async function () {
         !!mediaRecordingsResult.MediaRecordings
       )
     );
-    
+
     info_div.appendChild(
       createRow(
         "Courses List",
@@ -674,7 +691,7 @@ document.addEventListener('DOMContentLoaded', async function () {
         !!coursesListResult.CoursesList
       )
     );
-    
+
     info_div.appendChild(
       createRow(
         "Cookies",
@@ -684,7 +701,7 @@ document.addEventListener('DOMContentLoaded', async function () {
         !!cookiesResult.Cookies
       )
     );
-    
+
 
 
 
