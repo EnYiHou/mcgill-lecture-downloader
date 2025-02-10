@@ -1,62 +1,63 @@
-
 > [!CAUTION]
-> This extension is still under development. It may contain numerous bugs and has not been exhaustively tested.
+> This extension is still under development. It may contain bugs and has not been thoroughly tested.
+
 # McGill Lecture Downloader Chrome Extension
 
-This Google Chrome extension allows you to download lecture recordings from McGill's myCourses platform. Follow the instructions below to ensure you have all the required data to use this extension effectively.
+This Google Chrome extension lets you download McGill's myCourses platform lecture recordings. Follow the instructions below to install and use the extension correctly.
 
-## Installation
+<div style="display: flex; justify-content: space-around;">
+   <img src="screenshots/help.png" alt="Extension Installed" style="width: 30%;">
+   <img src="screenshots/popup.png" alt="Extension Popup" style="width: 30%;">
+   <img src="screenshots/downloading.png" alt="Extension Downloading" style="width: 30%;">
+</div>
 
-1. Clone or download this repository.
-   - To clone the repository, copy in your terminal `git clone https://github.com/EnYiHou/mcgill-lecture-downloader.git`.
-2. Open Chrome and go to `chrome://extensions/`.
-3. Enable "Developer mode" in the top right corner.
-4. Load the downloaded extension to Google Chrome.
-   - Click on "Load unpacked" and select the directory where you downloaded/cloned this repository.
+
+## Installation Guide
+
+### Step 1: Download the Extension
+1. Navigate to the **Releases** section of the repository.
+2. Download the latest **ZIP** file containing the extension.
+3. A [Google Chrome extension](https://chromewebstore.google.com/detail/mclecture/ipnhkfogmlokecmpgjhdkkibomgbjmlb) has been posted, and you may download it from the Google Extension Store. However, the Google Extension Store may have an outdated version due to a Google verification process.
+
+
+### Step 2: Install on Chrome
+1. Open Google Chrome and enter `chrome://extensions/` in the address bar.
+2. Enable **Developer mode** by toggling the switch in the top-right corner.
+3. Extract the downloaded **ZIP** file to a folder on your computer.
+4. Click the **Load unpacked** button on the Chrome extensions page.
+5. Select the extracted folder to install the extension.
 
 ## Usage Instructions
 
-1. Go to [myCourses](https://mycourses2.mcgill.ca/d2l/home) and log in.
-2. Navigate to the course you want to download lecture recordings from.
-3. Watch a lecture video of the course.
-4. Click on the extension icon in the Chrome toolbar to verify that everything works.
-5. If the extension does not work, please open an issue for assistance.
+1. **Log in to myCourses**: Open [McGill myCourses](https://mycourses2.mcgill.ca) and log in.
+2. **Access the Course**: Navigate to the course containing the lecture you want to download.
+3. **Play the Lecture Video**: Start playing the video for the extension to detect it.
+4. **Open the Extension**: Click on the extension icon in the Chrome toolbar.
+5. **Select the Course & Video**:
+   - The course should appear in the extension's list automatically.
+   - If the course does not appear, refresh the page or restart the extension.
+   - If issues persist, contact the developer.
+6. **Download Videos**:
+   - Select multiple videos or an individual video.
+   - Click the **Download** button.
+   - **Do not close the extension while downloading**.
+7. **Track Downloaded Videos**:
+   - Downloaded videos will have a **green background**.
+   - Right-click a video to manually toggle its download status.
+8. **Remove Courses from the List**:
+   - Right-click on a course to remove it from the extension’s list.
+   - Removed courses can be restored by revisiting myCourses.
 
+## Features
 
-## Development
+✔ **Batch Download**: Select multiple videos and download them at once.
 
-### Overview
+✔ **Download Status Indicator**: Downloaded videos are marked with a green background.
 
-This extension was developed by analyzing the McGill lecture recording system and identifying the necessary data required to download lectures. Key variables used in the code include:
+✔ **Manual Download Toggle**: Right-click any video to mark or unmark it as downloaded.
 
-- `cookie`: The cookie value used for authentication and session management.
-- `bearer`: Authorization token
-- `stoken`: Session token
-- `etime`: Expiration time
+✔ **Course Management**: Remove and re-add courses dynamically.
 
+---
 
-### Key Functions
-
-#### Data Extraction and Validation
-
-- **getPayLoad**: Fetches the payload required for authentication and extracts necessary input fields from the HTML response.
-- **getHFCourseIDHTML**: Uses the payload to make a POST request and retrieve the course ID.
-
-### UI Elements and User Interaction
-
-To ensure the Chrome extension does not create a standard popup that disappears when the cursor loses focus, we created a custom popup using JavaScript:
-
-- **createPopup**: Creates a custom popup element with an embedded iframe.
-
-- **makeDraggable**: Makes the popup draggable by attaching mouse event listeners.
-- **attach and detach**: Attaches and removes the custom popup to the DOM, respectively.
-
-### Background Script
-
-The background script is essential for capturing the required data, such as authorization tokens, course lists, and cookies:
-
-- **chrome.webRequest.onBeforeSendHeaders.addListener**: Intercepts HTTP requests to capture necessary data and store it in Chrome's local storage.
-
-## Contributing
-
-If you would like to contribute to this project, please fork the repository and submit a pull request.
+Enjoy your lectures! :)
