@@ -218,7 +218,7 @@ async function getPayLoad(cookie, courseDigit) {
     return inputFields;
   } catch (error) {
     console.error('Error:', error);
-    clearMainDiv();
+    clearMainDiv("Error: " + error.message);
     throw error;
   }
 }
@@ -258,7 +258,7 @@ async function getHFCourseIDHTML(payload) {
     return data;
   } catch (error) {
     console.error('Error:', error);
-    clearMainDiv();
+    clearMainDiv("Error: " + error.message);
 
     throw error;
   }
@@ -433,7 +433,6 @@ async function createCourseDiv(courseDigit, context_title = null, courseListID =
 
   let mediaListDiv = document.createElement('div');
   mediaListDiv.className = 'media-list';
-  mediaListDiv.classList.add('media-list');
 
   let selectAllDiv = document.createElement('div');
   selectAllDiv.className = 'select-all-div';
@@ -630,7 +629,16 @@ async function createCourseDiv(courseDigit, context_title = null, courseListID =
 
 
   courseDiv.addEventListener('click', () => {
+    let mediaListDivs = document.querySelectorAll('.media-list');
+    mediaListDivs.forEach(cmediaListDiv => {
+      if (cmediaListDiv !== mediaListDiv) {
+        cmediaListDiv.classList.remove('expanded');
+      }
+    });
     mediaListDiv.classList.toggle('expanded');
+    setTimeout(() => {
+      mediaListDiv.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 300);
   });
   courseDivTitle.addEventListener('contextmenu', async function (ev) {
     ev.preventDefault();
@@ -808,9 +816,7 @@ document.addEventListener('DOMContentLoaded', async function () {
 
 
     if (!recordingsInfoResult.RecordingsInfo || !mediaRecordingsResult.MediaRecordings || !coursesListResult.CoursesList || !cookiesResult.Cookies) {
-      clearMainDiv();
-
-      return;
+      clearMainDiv("Error: Unable to get recordings info, please ensure all required data is available.");
     }
     stoken = recordingsInfoResult.RecordingsInfo.stoken;
     etime = recordingsInfoResult.RecordingsInfo.etime;
@@ -836,7 +842,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     }
   } catch (error) {
     console.error("Error: ", error);
-    clearMainDiv();
+    clearMainDiv("Error: " + error.message);
 
   }
 });
@@ -854,10 +860,12 @@ function getFromStorage(key) {
 }
 
 
-function clearMainDiv() {
+function clearMainDiv(Error = "Error: Unable to get recordings info") {
   while (courses_div.firstChild) {
     courses_div.removeChild(courses_div.firstChild);
   }
-  courses_div.appendChild(cannotFindCourses);
+  const p = document.createElement("p");
+  p.textContent = Error;
+  courses_div.appendChild(p);
 
 }
