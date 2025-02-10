@@ -36,14 +36,14 @@ instructionContent.appendChild(closeBtn);
 
 const cannotFindCourses = document.createElement("div");
 cannotFindCourses.innerHTML = `
-  <h3>Can't find your courses?</h3>
+  <h3>Can't find your lectures?</h3>
   <p>Try the following steps:</p>
   <ol>
     <li>Go to myCourses and login</li>
     <li>Go to the course you want to download</li>
-    <li>Watch a lecture video of the course</li>
-    <li>Click on the extension icon and verify that everything works</li>
-    <li>If not, try contacting the developer</li>
+    <li>Start playing a lecture video of the course</li>
+    <li>Click on the extension icon, the course should appear in the list</li>
+    <li>If the course still doesn't appear, try contacting the developer</li>
   </ol>
 `;
 
@@ -57,7 +57,7 @@ features.innerHTML = `
   <h3>Features</h3>
   <ul>
     <li>Download multiple videos at once, select the videos you want to download and click the download button. <strong> DO NOT CLOSE THE TAB WHEN DOWNLOADING </strong></li>
-    <li>Mark videos as downloaded by right-clicking on the specific video</li>
+    <li>Downloaded videos are marked with a green background, right-click on a video to manually toggle its download status</li>
     <li>Remove courses from the list by right-clicking on the course (removed courses can be added back by reaccessing MyCourses)</li>
   </ul>
 `;
