@@ -7,6 +7,7 @@ body {
     height: 100%;
     box-sizing: border-box;
     background-color: #ffffff;
+    min-width: 600px;
 }
 
 
@@ -22,7 +23,7 @@ p {
 
 .courseDiv {
     cursor: pointer;
-    margin: 10px;
+    margin: 10px 5% 10px 5%;
     padding: 10px;
     border: 1px solid lightgrey;
     border-radius: 5px;
@@ -137,9 +138,7 @@ p {
     font-family: 'Times New Roman', Times, serif;
     font-size: 14px;
     line-height: 1.4;
-    margin: 0;
-    padding: 10px 15px;
-    border-top: 1px solid #e1e1e1;
+    margin: 5%;
     word-break: break-word;
     
     /* so large JSON won't overflow */
