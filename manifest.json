@@ -24,14 +24,28 @@
     }
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'"
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';",
+    "sandbox": "sandbox allow-scripts allow-forms allow-popups allow-modals; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'; child-src 'self';"
   },
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "lib/ffmpeg.min.js",
+        "lib/ffmpeg-core.js"
+      ]
+    }
+  ],
   "web_accessible_resources": [
     {
       "resources": [
         "popup.html",
         "icons/*",
-        "css/*"
+        "css/*",
+        "lib/ffmpeg-core.wasm",
+        "lib/ffmpeg-core.worker.js"
       ],
       "matches": [
         "<all_urls>"
