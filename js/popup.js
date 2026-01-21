@@ -1,4 +1,3 @@
-
 const { createFFmpeg, fetchFile } = FFmpeg;
 
 
@@ -20,7 +19,15 @@ async function runFFmpeg(inputFileName, outputFileName, commandStr, fileOrUrl) {
     return;
   }
 
-  ffmpeg.FS('writeFile', inputFileName, await fetchFile(fileOrUrl));
+  // FIXED: Use arrayBuffer() directly for Blobs to avoid FileReader "Code=0" errors in fetchFile
+  let data;
+  if (fileOrUrl instanceof Blob) {
+    data = new Uint8Array(await fileOrUrl.arrayBuffer());
+  } else {
+    data = await fetchFile(fileOrUrl);
+  }
+
+  ffmpeg.FS('writeFile', inputFileName, data);
 
   console.log('Running FFmpeg command:', commandList);
 
