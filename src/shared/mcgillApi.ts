@@ -57,6 +57,8 @@ export async function resolveCourseDigit(
   const html = await fetchCourseLandingHtml(payload);
   const courseDigit = extractHfCourseId(html);
 
+  // console.log("Resolved context title:", payload.context_title);
+
   return {
     courseDigit,
     contextTitle: payload.context_title

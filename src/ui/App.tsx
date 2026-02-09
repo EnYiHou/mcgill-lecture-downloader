@@ -97,14 +97,42 @@ function normalizeFilename(courseName: string, index: number): string {
   return `${courseName}_${index}`.replace(/\s+/g, '');
 }
 
-function buildCourseTitle(fallback: string | undefined, mediaList: MediaRecordingDto[], courseDigit: string): string {
-  if (fallback) {
-    return `${fallback}, ID: ${courseDigit}`;
+function ensureTitleHasCourseId(title: string, courseDigit: string): string {
+  const trimmed = title.trim();
+  if (!trimmed) {
+    return `Course ID: ${courseDigit}`;
   }
-  if (mediaList[0]?.courseName) {
-    return `${mediaList[0].courseName}, ID: ${courseDigit}`;
+  if (trimmed.includes(', ID:')) {
+    return trimmed;
+  }
+  return `${trimmed}, ID: ${courseDigit}`;
+}
+
+function buildCourseTitle(fallback: string | undefined, mediaList: MediaRecordingDto[], courseDigit: string): string {
+  const fallbackTitle = fallback?.trim();
+  const mediaTitle = mediaList[0]?.courseName?.trim();
+
+  // Prefer context_title from LTI when it is meaningful. Some media payloads only expose "Course ID: ...".
+  if (fallbackTitle && !isFallbackCourseIdTitle(fallbackTitle)) {
+    return ensureTitleHasCourseId(fallbackTitle, courseDigit);
+  }
+  if (mediaTitle && !isFallbackCourseIdTitle(mediaTitle)) {
+    return ensureTitleHasCourseId(mediaTitle, courseDigit);
+  }
+  if (fallbackTitle) {
+    return ensureTitleHasCourseId(fallbackTitle, courseDigit);
+  }
+  if (mediaTitle) {
+    return ensureTitleHasCourseId(mediaTitle, courseDigit);
   }
   return `Course ID: ${courseDigit}`;
+}
+
+function isFallbackCourseIdTitle(value: string | undefined): boolean {
+  if (!value) {
+    return true;
+  }
+  return value.trim().startsWith('Course ID:');
 }
 
 function toErrorMessage(error: unknown): string {
@@ -504,23 +532,28 @@ export function App() {
 
       const candidateMap = new Map<string, { courseDigit: string; title: string; courseListId: string | null }>();
       const catalogCourses = storedCatalog?.courses ?? [];
-      const visibleCourseListIds = new Set(
-        catalogCourses
-          .filter((entry) => !hiddenSet.has(entry.courseDigit) && Boolean(entry.courseListId))
-          .map((entry) => entry.courseListId as string)
-      );
-      const hasCatalog = catalogCourses.length > 0;
-      const resolvableCourseListIds = hasCatalog
-        ? authData.coursesList.filter((courseListId) => visibleCourseListIds.has(courseListId))
-        : authData.coursesList;
+      const courseByListId = new Map<string, CourseCatalogEntry>();
+      catalogCourses.forEach((entry) => {
+        if (entry.courseListId) {
+          courseByListId.set(entry.courseListId, entry);
+        }
+      });
+
+      // Always resolve newly captured courseList IDs so renamed/new courses refresh metadata.
+      const resolvableCourseListIds = authData.coursesList.filter((courseListId) => {
+        const existing = courseByListId.get(courseListId);
+        if (!existing) {
+          return true;
+        }
+        return !hiddenSet.has(existing.courseDigit);
+      });
       const resolvedCourses = await mapWithConcurrency(resolvableCourseListIds, 3, async (courseListId) => {
         const resolved = await resolveCourseDigit(authData.cookieHeader, courseListId);
         if (!resolved.courseDigit) {
           return null;
         }
-        const title = resolved.contextTitle
-          ? `${resolved.contextTitle}, ID: ${resolved.courseDigit}`
-          : `Course ID: ${resolved.courseDigit}`;
+        console.log("Resolved course digit:", resolved.courseDigit, "for course list ID:", courseListId, "with context title:", resolved.contextTitle);
+        const title = resolved.contextTitle;
         return {
           courseDigit: resolved.courseDigit,
           title,
@@ -563,9 +596,22 @@ export function App() {
         lastSeenAt: currentTime
       }));
 
-      const mergedCatalog = dedupeCourseCatalog([...(storedCatalog?.courses ?? []), ...catalogFromLoad]);
-      setCourseCatalog(mergedCatalog);
-      await storageSet('courseCatalog', { courses: mergedCatalog });
+      const mergedByDigit = new Map((storedCatalog?.courses ?? []).map((entry) => [entry.courseDigit, entry] as const));
+      catalogFromLoad.forEach((incoming) => {
+        const existing = mergedByDigit.get(incoming.courseDigit);
+        if (!existing) {
+          mergedByDigit.set(incoming.courseDigit, incoming);
+          return;
+        }
+
+        const keepExistingTitle = !isFallbackCourseIdTitle(existing.title) && isFallbackCourseIdTitle(incoming.title);
+        mergedByDigit.set(incoming.courseDigit, {
+          ...existing,
+          ...incoming,
+          title: keepExistingTitle ? existing.title : incoming.title
+        });
+      });
+      let mergedCatalog = dedupeCourseCatalog(Array.from(mergedByDigit.values()));
 
       const visibleCandidates = Array.from(candidateMap.values()).filter((course) => !hiddenSet.has(course.courseDigit));
       const courseResults = await mapWithConcurrency(visibleCandidates, 3, async (candidate) =>
@@ -584,6 +630,33 @@ export function App() {
         loadedCourses.push(result.value);
       }
       loadedCourses.sort((a, b) => a.title.localeCompare(b.title));
+
+      if (loadedCourses.length > 0) {
+        const courseByDigit = new Map(mergedCatalog.map((entry) => [entry.courseDigit, entry] as const));
+        loadedCourses.forEach((course) => {
+          const existing = courseByDigit.get(course.courseDigit);
+          if (!existing) {
+            courseByDigit.set(course.courseDigit, {
+              courseDigit: course.courseDigit,
+              title: course.title,
+              courseListId: course.courseListId,
+              lastSeenAt: Date.now()
+            });
+            return;
+          }
+
+          courseByDigit.set(course.courseDigit, {
+            ...existing,
+            title: course.title,
+            courseListId: course.courseListId ?? existing.courseListId,
+            lastSeenAt: Date.now()
+          });
+        });
+        mergedCatalog = dedupeCourseCatalog(Array.from(courseByDigit.values()));
+      }
+
+      setCourseCatalog(mergedCatalog);
+      await storageSet('courseCatalog', { courses: mergedCatalog });
 
       setCourses(loadedCourses);
     } catch (error) {
