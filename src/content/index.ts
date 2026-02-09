@@ -1,4 +1,13 @@
 (() => {
+  const hostWindow = window as Window & {
+    __mclectureOpenOverlay?: () => void;
+  };
+
+  if (typeof hostWindow.__mclectureOpenOverlay === 'function') {
+    hostWindow.__mclectureOpenOverlay();
+    return;
+  }
+
   const ROOT_ID = 'mclecture-popup';
   const OVERLAY_ID = 'mclecture-drag-overlay';
   const TITLE_BAR_ID = 'mclecture-title-bar';
@@ -8,6 +17,7 @@
   const BOUNDS_STORAGE_KEY = 'overlayBounds';
   const MESSAGE_SOURCE = 'mclecture';
   const MESSAGE_TYPE_DOWNLOAD_STATE = 'download-state';
+  const OPEN_OVERLAY_MESSAGE_TYPE = 'mclecture-open-overlay';
 
   const TITLE_BAR_HEIGHT = 40;
   const DEFAULT_MARGIN = 24;
@@ -489,9 +499,25 @@
     });
   }
 
+  function focusExistingPopup(): boolean {
+    const root = document.getElementById(ROOT_ID);
+    if (!root) {
+      return false;
+    }
+
+    const minimizeButton = document.getElementById(MINIMIZE_BUTTON_ID) as HTMLButtonElement | null;
+    if (root.classList.contains(MINIMIZED_CLASS) && minimizeButton) {
+      restoreFromMinimized(root, minimizeButton);
+    }
+
+    root.style.zIndex = '2147483646';
+    scheduleSaveBounds(root);
+    return true;
+  }
+
   async function attachPopup(): Promise<void> {
     ensureStyle();
-    if (!detachPopup(false)) {
+    if (focusExistingPopup()) {
       return;
     }
 
@@ -571,9 +597,30 @@
     scheduleSaveBounds(root);
   };
 
+  const onRuntimeMessage = (
+    message: unknown,
+    _sender: chrome.runtime.MessageSender,
+    sendResponse: (response?: unknown) => void
+  ): boolean => {
+    const payload = message as { type?: string } | null;
+    if (!payload || payload.type !== OPEN_OVERLAY_MESSAGE_TYPE) {
+      return false;
+    }
+
+    void attachPopup().then(() => {
+      sendResponse({ handled: true });
+    });
+    return true;
+  };
+
   window.addEventListener('message', onMessage);
   window.addEventListener('beforeunload', onBeforeUnload);
   window.addEventListener('resize', onWindowResize);
+  chrome.runtime.onMessage.addListener(onRuntimeMessage);
+
+  hostWindow.__mclectureOpenOverlay = () => {
+    void attachPopup();
+  };
 
   void attachPopup();
 })();
