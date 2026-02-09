@@ -1,4 +1,5 @@
 import type { ExtensionStorage, StorageKey } from './types';
+import { migrateLegacyDownloadedItems } from './downloadMarkers';
 
 export async function storageGet<K extends StorageKey>(key: K): Promise<ExtensionStorage[K]> {
   return new Promise((resolve, reject) => {
@@ -26,11 +27,30 @@ export async function storageSet<K extends StorageKey>(key: K, value: ExtensionS
 
 export async function readDownloadedItems(): Promise<Set<string>> {
   const value = await storageGet('downloadedItems');
-  return new Set(Array.isArray(value) ? value : []);
+  return migrateLegacyDownloadedItems(Array.isArray(value) ? value : []);
 }
 
 export async function writeDownloadedItems(items: Set<string>): Promise<void> {
   await storageSet('downloadedItems', Array.from(items));
+}
+
+export async function readUiPreferences(): Promise<ExtensionStorage['uiPreferences']> {
+  const value = await storageGet('uiPreferences');
+  const defaults = {
+    performanceMode: false,
+    reducedMotion: false,
+    showVisualEffects: true,
+    menuCollapsed: false
+  };
+
+  if (!value) {
+    return defaults;
+  }
+
+  return {
+    ...defaults,
+    ...value
+  };
 }
 
 export async function readRequiredAuthData(): Promise<{
@@ -63,5 +83,28 @@ export async function readRequiredAuthData(): Promise<{
     bearer,
     coursesList,
     cookieHeader
+  };
+}
+
+export async function readAuthReadiness(): Promise<{
+  hasStoken: boolean;
+  hasEtime: boolean;
+  hasBearer: boolean;
+  hasCourses: boolean;
+  hasCookies: boolean;
+}> {
+  const [recordings, mediaRecordings, courses, cookies] = await Promise.all([
+    storageGet('RecordingsInfo'),
+    storageGet('MediaRecordings'),
+    storageGet('CoursesList'),
+    storageGet('Cookies')
+  ]);
+
+  return {
+    hasStoken: Boolean(recordings?.stoken),
+    hasEtime: Boolean(recordings?.etime),
+    hasBearer: Boolean(mediaRecordings?.authorizationHeader?.value),
+    hasCourses: Boolean(courses?.coursesList?.length),
+    hasCookies: Boolean(cookies?.cookies?.value)
   };
 }

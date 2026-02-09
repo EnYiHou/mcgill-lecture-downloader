@@ -2,12 +2,13 @@
   "manifest_version": 3,
   "name": "McLecture",
   "version": "1.2",
-  "permissions": ["webRequest", "storage", "scripting"],
-  "host_permissions": ["https://*/*", "http://*/*"],
+  "permissions": ["webRequest", "storage", "scripting", "activeTab"],
+  "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "js/background.js"
   },
   "action": {
+    "default_title": "Open McLecture overlay",
     "default_icon": {
       "16": "icons/icon.png",
       "32": "icons/icon.png",
@@ -16,7 +17,7 @@
     }
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';"
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; worker-src 'self';"
   },
   "web_accessible_resources": [
     {
