@@ -1,7 +1,16 @@
 let ffmpegCore: FFmpegCoreModule | null = null;
 let running = false;
 let stderrBuffer: string[] = [];
+let stdoutBuffer: string[] = [];
 let ffmpegScriptLoading: Promise<void> | null = null;
+interface FfmpegCommandTrace {
+  command: string;
+  ok: boolean;
+  status: number | null;
+  stderrTail: string;
+  stdoutTail: string;
+}
+const ffmpegCommandTraces: FfmpegCommandTrace[] = [];
 const DEBUG_PREFIX = '[McLecture][ffmpeg]';
 const FFMPEG_FATAL_PATTERNS = [
   'conversion failed',
@@ -31,6 +40,35 @@ function stderrTail(maxLines = 12): string {
     return '';
   }
   return stderrBuffer.slice(-maxLines).join(' | ');
+}
+
+function stdoutTail(maxLines = 12): string {
+  if (stdoutBuffer.length === 0) {
+    return '';
+  }
+  return stdoutBuffer.slice(-maxLines).join(' | ');
+}
+
+function pushCommandTrace(trace: FfmpegCommandTrace): void {
+  ffmpegCommandTraces.push(trace);
+  if (ffmpegCommandTraces.length > 200) {
+    ffmpegCommandTraces.shift();
+  }
+}
+
+function summarizeRecentCommandTraces(limit = 15): string {
+  const recent = ffmpegCommandTraces.slice(-limit);
+  if (recent.length === 0) {
+    return 'No FFmpeg command traces captured.';
+  }
+  return recent
+    .map((trace, index) => {
+      const statusLabel = trace.status === null ? 'n/a' : String(trace.status);
+      const stderrLabel = trace.stderrTail.trim().length > 0 ? ` stderr=${trace.stderrTail}` : '';
+      const stdoutLabel = trace.stdoutTail.trim().length > 0 ? ` stdout=${trace.stdoutTail}` : '';
+      return `${index + 1}. ok=${trace.ok} status=${statusLabel} cmd=${trace.command}${stderrLabel}${stdoutLabel}`;
+    })
+    .join(' | ');
 }
 
 function normalizeTimestamp(value: string): string | null {
@@ -166,18 +204,35 @@ function convertWebVttToSrt(content: string): string | null {
   return result.length > 0 ? `${result}\n` : null;
 }
 
-function parseArgs(module: FFmpegCoreModule, args: string[]): [number, number] {
+function parseArgs(module: FFmpegCoreModule, args: string[]): [number, number, number[]] {
   const argc = args.length;
   const argv = module._malloc(argc * Uint32Array.BYTES_PER_ELEMENT);
+  const ptrs: number[] = [];
 
   args.forEach((arg, index) => {
     const size = module.lengthBytesUTF8(arg) + 1;
     const ptr = module._malloc(size);
+    ptrs.push(ptr);
     module.stringToUTF8(arg, ptr, size);
     module.setValue(argv + Uint32Array.BYTES_PER_ELEMENT * index, ptr, 'i32');
   });
 
-  return [argc, argv];
+  return [argc, argv, ptrs];
+}
+
+function freeParsedArgs(module: FFmpegCoreModule, argv: number, ptrs: number[]): void {
+  for (const ptr of ptrs) {
+    try {
+      module._free(ptr);
+    } catch {
+      // Best-effort cleanup.
+    }
+  }
+  try {
+    module._free(argv);
+  } catch {
+    // Best-effort cleanup.
+  }
 }
 
 export async function ensureFfmpegLoaded(): Promise<FFmpegCoreModule> {
@@ -215,13 +270,36 @@ export async function ensureFfmpegLoaded(): Promise<FFmpegCoreModule> {
       return `${prefix}${path}`;
     },
     print: (message) => {
-      void message;
+      stdoutBuffer.push(message);
     },
     printErr: (message) => {
       stderrBuffer.push(message);
     }
   });
   return ffmpegCore;
+}
+
+async function resetFfmpegCore(reason: string): Promise<void> {
+  if (!ffmpegCore) {
+    return;
+  }
+  if (running) {
+    throw new Error('Cannot reset FFmpeg core while a command is running.');
+  }
+
+  debugInfo(`reset core: ${reason}`);
+  try {
+    const maybeExit = (ffmpegCore as unknown as { exit?: (status: number) => void }).exit;
+    if (typeof maybeExit === 'function') {
+      maybeExit(0);
+    }
+  } catch (error) {
+    debugInfo(`reset core exit threw: ${error instanceof Error ? error.message : String(error)}`);
+  } finally {
+    ffmpegCore = null;
+    stderrBuffer = [];
+    stdoutBuffer = [];
+  }
 }
 
 async function runFfmpegCommand(args: string[]): Promise<void> {
@@ -232,12 +310,17 @@ async function runFfmpegCommand(args: string[]): Promise<void> {
 
   running = true;
   stderrBuffer = [];
+  stdoutBuffer = [];
+  const command = `ffmpeg -nostdin -y ${args.join(' ')}`;
+  let exitStatus: number | null = null;
+  let success = false;
 
   try {
-    debugInfo(`run: ffmpeg -nostdin -y ${args.join(' ')}`);
+    debugInfo(`run: ${command}`);
     if (typeof module.callMain === 'function') {
       const maybeExitCode = module.callMain(['-nostdin', '-y', ...args]);
       if (typeof maybeExitCode === 'number' && maybeExitCode !== 0) {
+        exitStatus = maybeExitCode;
         const stderr = stderrBuffer.join('\n').trim();
         throw new Error(
           stderr.length > 0
@@ -246,28 +329,48 @@ async function runFfmpegCommand(args: string[]): Promise<void> {
         );
       }
       const stderr = stderrBuffer.join('\n').toLowerCase();
+      const stdout = stdoutBuffer.join('\n').toLowerCase();
       if (FFMPEG_FATAL_PATTERNS.some((pattern) => stderr.includes(pattern))) {
         debugInfo(`fatal stderr: ${stderrBuffer.slice(-20).join(' | ')}`);
         throw new Error(`FFmpeg failed: ${stderrBuffer.join('\n').trim()}`);
+      }
+      if (FFMPEG_FATAL_PATTERNS.some((pattern) => stdout.includes(pattern))) {
+        debugInfo(`fatal stdout: ${stdoutBuffer.slice(-20).join(' | ')}`);
+        throw new Error(`FFmpeg failed: ${stdoutBuffer.join('\n').trim()}`);
       }
       const tail = stderrTail();
       if (tail) {
         debugInfo(`stderr tail: ${tail}`);
       }
+      const outTail = stdoutTail();
+      if (outTail) {
+        debugInfo(`stdout tail: ${outTail}`);
+      }
+      success = true;
       return;
     }
 
     const ffmpegArgs = ['./ffmpeg', '-nostdin', '-y', ...args].filter((value) => value.length > 0);
-    const [argc, argv] = parseArgs(module, ffmpegArgs);
-    const status = module._main(argc, argv);
-    if (typeof status === 'number' && status !== 0) {
-      const stderr = stderrBuffer.join('\n').trim();
-      throw new Error(stderr.length > 0 ? `FFmpeg exited with status ${status}: ${stderr}` : `FFmpeg exited with status ${status}.`);
+    const [argc, argv, ptrs] = parseArgs(module, ffmpegArgs);
+    try {
+      const status = module._main(argc, argv);
+      if (typeof status === 'number' && status !== 0) {
+        exitStatus = status;
+        const stderr = stderrBuffer.join('\n').trim();
+        throw new Error(stderr.length > 0 ? `FFmpeg exited with status ${status}: ${stderr}` : `FFmpeg exited with status ${status}.`);
+      }
+    } finally {
+      freeParsedArgs(module, argv, ptrs);
     }
     const tail = stderrTail();
     if (tail) {
       debugInfo(`stderr tail: ${tail}`);
     }
+    const outTail = stdoutTail();
+    if (outTail) {
+      debugInfo(`stdout tail: ${outTail}`);
+    }
+    success = true;
   } catch (error) {
     const maybeStatus =
       typeof error === 'object' &&
@@ -278,7 +381,12 @@ async function runFfmpegCommand(args: string[]): Promise<void> {
         : null;
 
     if (maybeStatus === 0) {
+      success = true;
       return;
+    }
+
+    if (exitStatus === null && maybeStatus !== null) {
+      exitStatus = maybeStatus;
     }
 
     if (error instanceof Error) {
@@ -295,12 +403,20 @@ async function runFfmpegCommand(args: string[]): Promise<void> {
     }
 
     debugInfo(`command error stderr tail: ${stderrTail(20)}`);
+    debugInfo(`command error stdout tail: ${stdoutTail(20)}`);
     try {
       throw new Error(JSON.stringify(error));
     } catch {
       throw new Error(String(error));
     }
   } finally {
+    pushCommandTrace({
+      command,
+      ok: success,
+      status: exitStatus,
+      stderrTail: stderrTail(20),
+      stdoutTail: stdoutTail(20)
+    });
     running = false;
   }
 }
@@ -327,6 +443,24 @@ async function hasPlayableMediaStream(fileName: string): Promise<boolean> {
   }
 }
 
+async function hasVideoStream(fileName: string): Promise<boolean> {
+  try {
+    await runFfmpegCommand(['-i', fileName, '-map', '0:v:0', '-c', 'copy', '-f', 'null', '-']);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function hasAudioStream(fileName: string): Promise<boolean> {
+  try {
+    await runFfmpegCommand(['-i', fileName, '-map', '0:a:0', '-c', 'copy', '-f', 'null', '-']);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function hasSubtitleStream(fileName: string): Promise<boolean> {
   try {
     await runFfmpegCommand(['-i', fileName, '-map', '0:s:0', '-c', 'copy', '-f', 'null', '-']);
@@ -338,16 +472,27 @@ async function hasSubtitleStream(fileName: string): Promise<boolean> {
 
 async function hasDecodableMediaStream(fileName: string): Promise<boolean> {
   try {
+    const hasVideo = await hasVideoStream(fileName);
+    const hasAudio = await hasAudioStream(fileName);
+    if (!hasVideo && !hasAudio) {
+      return false;
+    }
+
+    const mapArgs: string[] = [];
+    if (hasVideo) {
+      mapArgs.push('-map', '0:v:0');
+    }
+    if (hasAudio) {
+      mapArgs.push('-map', '0:a:0');
+    }
+
     await runFfmpegCommand([
       '-v',
       'error',
       '-xerror',
       '-i',
       fileName,
-      '-map',
-      '0:v:0',
-      '-map',
-      '0:a?',
+      ...mapArgs,
       '-t',
       '5',
       '-f',
@@ -358,6 +503,50 @@ async function hasDecodableMediaStream(fileName: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+async function runFailureDiagnostics(inputFileName: string, baseOutputFileName: string): Promise<string> {
+  const lines: string[] = [];
+  const module = await ensureFfmpegLoaded();
+  try {
+    const inputStat = module.FS.stat(inputFileName);
+    lines.push(`input bytes=${inputStat.size}`);
+  } catch {
+    lines.push('input bytes=unavailable');
+  }
+  try {
+    const baseStat = module.FS.stat(baseOutputFileName);
+    lines.push(`base output bytes=${baseStat.size}`);
+  } catch {
+    lines.push('base output bytes=missing');
+  }
+
+  const probeCommands: Array<{ label: string; args: string[] }> = [
+    {
+      label: 'probe streams',
+      args: ['-v', 'info', '-i', inputFileName, '-map', '0', '-c', 'copy', '-f', 'null', '-']
+    },
+    {
+      label: 'probe video decode',
+      args: ['-v', 'error', '-xerror', '-i', inputFileName, '-map', '0:v:0', '-frames:v', '5', '-f', 'null', '-']
+    },
+    {
+      label: 'probe audio decode',
+      args: ['-v', 'error', '-xerror', '-i', inputFileName, '-map', '0:a:0', '-t', '5', '-f', 'null', '-']
+    }
+  ];
+
+  for (const probe of probeCommands) {
+    try {
+      await runFfmpegCommand(probe.args);
+      lines.push(`${probe.label}: ok`);
+    } catch (error) {
+      lines.push(`${probe.label}: fail ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  lines.push(`recent commands: ${summarizeRecentCommandTraces(20)}`);
+  return lines.join(' | ');
 }
 
 function removeFsFile(module: FFmpegCoreModule, fileName: string): void {
@@ -387,6 +576,8 @@ export async function remuxTsToMp4(
   outputFileName: string,
   captionTrack?: RemuxCaptionTrack | null
 ): Promise<RemuxResult> {
+  await resetFfmpegCore('job start');
+  ffmpegCommandTraces.length = 0;
   const debugLog: string[] = [];
   const pushDebug = (message: string): void => {
     debugLog.push(message);
@@ -420,60 +611,91 @@ export async function remuxTsToMp4(
   if (captionSrtFileName) {
     removeFsFile(module, captionSrtFileName);
   }
-
-  const data = new Uint8Array(await tsBlob.arrayBuffer());
-  module.FS.writeFile(inputFileName, data);
-
-  if (captionFileName) {
-    const captionData = new TextEncoder().encode(captionContent);
-    module.FS.writeFile(captionFileName, captionData);
-    pushDebug(`caption VTT bytes=${captionData.byteLength}`);
-    const srt = convertWebVttToSrt(captionContent);
-    if (srt && captionSrtFileName) {
-      const srtData = new TextEncoder().encode(srt);
-      module.FS.writeFile(captionSrtFileName, srtData);
-      pushDebug(`caption SRT bytes=${srtData.byteLength}`);
-    } else {
-      pushDebug('caption SRT conversion unavailable');
+  try {
+    let data = new Uint8Array(await tsBlob.arrayBuffer());
+    module.FS.writeFile(inputFileName, data);
+    // Release large transient input buffer as early as possible.
+    data = new Uint8Array(0);
+    const inputHasVideo = await hasVideoStream(inputFileName);
+    const inputHasAudio = await hasAudioStream(inputFileName);
+    if (!inputHasVideo && !inputHasAudio) {
+      throw new Error('Input transport stream has no playable video/audio streams.');
     }
-  }
+
+    if (captionFileName) {
+      const captionData = new TextEncoder().encode(captionContent);
+      module.FS.writeFile(captionFileName, captionData);
+      pushDebug(`caption VTT bytes=${captionData.byteLength}`);
+      const srt = convertWebVttToSrt(captionContent);
+      if (srt && captionSrtFileName) {
+        const srtData = new TextEncoder().encode(srt);
+        module.FS.writeFile(captionSrtFileName, srtData);
+        pushDebug(`caption SRT bytes=${srtData.byteLength}`);
+      } else {
+        pushDebug('caption SRT conversion unavailable');
+      }
+    }
 
   // First produce a baseline MP4 from the transport stream.
-  await runFfmpegCommand([
-    '-i',
-    inputFileName,
-    '-map',
-    '0:v:0',
-    '-map',
-    '0:a?',
-    '-c',
-    'copy',
-    '-bsf:a',
-    'aac_adtstoasc',
-    baseOutputFileName
-  ]);
-  assertFsFileExists(module, baseOutputFileName);
-  if (!(await hasPlayableMediaStream(baseOutputFileName)) || !(await hasDecodableMediaStream(baseOutputFileName))) {
-    pushDebug('base mp4 copy remux produced non-decodable stream; retrying with re-encode');
+  let baseReady = false;
+  try {
+    const copyMapArgs: string[] = [];
+    if (inputHasVideo) {
+      copyMapArgs.push('-map', '0:v:0');
+    }
+    if (inputHasAudio) {
+      copyMapArgs.push('-map', '0:a:0');
+    }
+    const copyBsfArgs = inputHasAudio ? ['-bsf:a', 'aac_adtstoasc'] : [];
+    await runFfmpegCommand([
+      '-fflags',
+      '+genpts+discardcorrupt',
+      '-err_detect',
+      'ignore_err',
+      '-i',
+      inputFileName,
+      ...copyMapArgs,
+      '-c',
+      'copy',
+      ...copyBsfArgs,
+      baseOutputFileName
+    ]);
+    assertFsFileExists(module, baseOutputFileName);
+    baseReady = (await hasPlayableMediaStream(baseOutputFileName)) && (await hasDecodableMediaStream(baseOutputFileName));
+    if (!baseReady) {
+      pushDebug('base mp4 copy remux produced non-decodable stream; retrying with re-encode');
+    }
+  } catch {
+    baseReady = false;
+    pushDebug(`base mp4 copy remux failed; retrying with re-encode: ${stderrTail(20)}`);
+  }
+
+  if (!baseReady) {
     let reencodeOk = false;
     try {
+      const encodeMapArgs: string[] = [];
+      if (inputHasVideo) {
+        encodeMapArgs.push('-map', '0:v:0');
+      }
+      if (inputHasAudio) {
+        encodeMapArgs.push('-map', '0:a:0');
+      }
+      const encodeCodecArgs: string[] = [];
+      if (inputHasVideo) {
+        encodeCodecArgs.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23');
+      }
+      if (inputHasAudio) {
+        encodeCodecArgs.push('-c:a', 'aac', '-b:a', '128k');
+      }
       await runFfmpegCommand([
+        '-fflags',
+        '+genpts+discardcorrupt',
+        '-err_detect',
+        'ignore_err',
         '-i',
         inputFileName,
-        '-map',
-        '0:v:0',
-        '-map',
-        '0:a?',
-        '-c:v',
-        'libx264',
-        '-preset',
-        'veryfast',
-        '-crf',
-        '23',
-        '-c:a',
-        'aac',
-        '-b:a',
-        '128k',
+        ...encodeMapArgs,
+        ...encodeCodecArgs,
         '-movflags',
         '+faststart',
         baseOutputFileName
@@ -486,37 +708,57 @@ export async function remuxTsToMp4(
     }
 
     if (!reencodeOk) {
-      await runFfmpegCommand([
-        '-i',
-        inputFileName,
-        '-map',
-        '0:v:0',
-        '-map',
-        '0:a?',
-        '-c:v',
-        'mpeg4',
-        '-q:v',
-        '3',
-        '-c:a',
-        'aac',
-        '-b:a',
-        '128k',
-        '-movflags',
-        '+faststart',
-        baseOutputFileName
-      ]);
-      pushDebug('base mp4 re-encode succeeded with mpeg4/aac');
+      const encodeMapArgs: string[] = [];
+      if (inputHasVideo) {
+        encodeMapArgs.push('-map', '0:v:0');
+      }
+      if (inputHasAudio) {
+        encodeMapArgs.push('-map', '0:a:0');
+      }
+      const encodeCodecArgs: string[] = [];
+      if (inputHasVideo) {
+        encodeCodecArgs.push('-c:v', 'mpeg4', '-q:v', '3');
+      }
+      if (inputHasAudio) {
+        encodeCodecArgs.push('-c:a', 'aac', '-b:a', '128k');
+      }
+      try {
+        await runFfmpegCommand([
+          '-fflags',
+          '+genpts+discardcorrupt',
+          '-err_detect',
+          'ignore_err',
+          '-i',
+          inputFileName,
+          ...encodeMapArgs,
+          ...encodeCodecArgs,
+          '-movflags',
+          '+faststart',
+          baseOutputFileName
+        ]);
+        pushDebug('base mp4 re-encode succeeded with mpeg4/aac');
+      } catch {
+        pushDebug(`base mp4 re-encode failed with mpeg4/aac: ${stderrTail(20)}`);
+        const mb = Math.round(tsBlob.size / (1024 * 1024));
+        const diag = await runFailureDiagnostics(inputFileName, baseOutputFileName);
+        pushDebug(`diagnostics: ${diag}`);
+        throw new Error(
+          `Base remux failed for this recording (input ~${mb} MB). FFmpeg wasm could not process this TS stream in-browser (status 1). Diagnostics: ${diag}`
+        );
+      }
     }
   }
 
-  if (!(await hasPlayableMediaStream(baseOutputFileName)) || !(await hasDecodableMediaStream(baseOutputFileName))) {
-    throw new Error('Base MP4 remux did not produce a decodable video/audio stream.');
-  }
-  pushDebug('base mp4 remux succeeded');
+    if (!(await hasPlayableMediaStream(baseOutputFileName)) || !(await hasDecodableMediaStream(baseOutputFileName))) {
+      throw new Error('Base MP4 remux did not produce a decodable video/audio stream.');
+    }
+    pushDebug('base mp4 remux succeeded');
 
-  if (captionFileName) {
-    const language = (captionTrack?.language ?? 'en').trim() || 'en';
-    let subtitleTrackReady = false;
+    if (captionFileName) {
+      const language = (captionTrack?.language ?? 'en').trim() || 'en';
+      const baseHasVideo = await hasVideoStream(baseOutputFileName);
+      const baseHasAudio = await hasAudioStream(baseOutputFileName);
+      let subtitleTrackReady = false;
 
     try {
       await runFfmpegCommand([
@@ -572,19 +814,23 @@ export async function remuxTsToMp4(
       }
     }
 
-    let captionEmbedded = false;
-    if (subtitleTrackReady) {
+      let captionEmbedded = false;
+      if (subtitleTrackReady) {
+      const muxMapArgs: string[] = [];
+      if (baseHasVideo) {
+        muxMapArgs.push('-map', '0:v:0');
+      }
+      if (baseHasAudio) {
+        muxMapArgs.push('-map', '0:a:0');
+      }
+      muxMapArgs.push('-map', '1:s:0');
+
       await runFfmpegCommand([
         '-i',
         baseOutputFileName,
         '-i',
         subtitleTrackOutputFileName,
-        '-map',
-        '0:v:0',
-        '-map',
-        '0:a?',
-        '-map',
-        '1:s:0',
+        ...muxMapArgs,
         '-c:v',
         'copy',
         '-c:a',
@@ -604,27 +850,28 @@ export async function remuxTsToMp4(
         pushDebug('caption mux copy path produced non-decodable media; retrying with re-encode');
         let muxReencodeOk = false;
         try {
+          const encodeMapArgs: string[] = [];
+          if (baseHasVideo) {
+            encodeMapArgs.push('-map', '0:v:0');
+          }
+          if (baseHasAudio) {
+            encodeMapArgs.push('-map', '0:a:0');
+          }
+          encodeMapArgs.push('-map', '1:s:0');
+          const encodeCodecArgs: string[] = [];
+          if (baseHasVideo) {
+            encodeCodecArgs.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23');
+          }
+          if (baseHasAudio) {
+            encodeCodecArgs.push('-c:a', 'aac', '-b:a', '128k');
+          }
           await runFfmpegCommand([
             '-i',
             baseOutputFileName,
             '-i',
             subtitleTrackOutputFileName,
-            '-map',
-            '0:v:0',
-            '-map',
-            '0:a?',
-            '-map',
-            '1:s:0',
-            '-c:v',
-            'libx264',
-            '-preset',
-            'veryfast',
-            '-crf',
-            '23',
-            '-c:a',
-            'aac',
-            '-b:a',
-            '128k',
+            ...encodeMapArgs,
+            ...encodeCodecArgs,
             '-c:s',
             'copy',
             '-metadata:s:s:0',
@@ -638,25 +885,28 @@ export async function remuxTsToMp4(
           pushDebug(`caption mux re-encode failed with libx264/aac: ${stderrTail(20)}`);
         }
         if (!muxReencodeOk) {
+          const encodeMapArgs: string[] = [];
+          if (baseHasVideo) {
+            encodeMapArgs.push('-map', '0:v:0');
+          }
+          if (baseHasAudio) {
+            encodeMapArgs.push('-map', '0:a:0');
+          }
+          encodeMapArgs.push('-map', '1:s:0');
+          const encodeCodecArgs: string[] = [];
+          if (baseHasVideo) {
+            encodeCodecArgs.push('-c:v', 'mpeg4', '-q:v', '3');
+          }
+          if (baseHasAudio) {
+            encodeCodecArgs.push('-c:a', 'aac', '-b:a', '128k');
+          }
           await runFfmpegCommand([
             '-i',
             baseOutputFileName,
             '-i',
             subtitleTrackOutputFileName,
-            '-map',
-            '0:v:0',
-            '-map',
-            '0:a?',
-            '-map',
-            '1:s:0',
-            '-c:v',
-            'mpeg4',
-            '-q:v',
-            '3',
-            '-c:a',
-            'aac',
-            '-b:a',
-            '128k',
+            ...encodeMapArgs,
+            ...encodeCodecArgs,
             '-c:s',
             'copy',
             '-metadata:s:s:0',
@@ -678,46 +928,47 @@ export async function remuxTsToMp4(
       );
     }
 
-    if (captionEmbedded) {
-      captionsEmbedded = true;
-      pushDebug('final output selected from caption output');
+      if (captionEmbedded) {
+        captionsEmbedded = true;
+        pushDebug('final output selected from caption output');
+      } else {
+        throw new Error(`Caption embedding failed. ${debugLog.slice(-20).join(' | ')}`);
+      }
     } else {
-      throw new Error(`Caption embedding failed. ${debugLog.slice(-20).join(' | ')}`);
+      await runFfmpegCommand(['-i', baseOutputFileName, '-map', '0', '-c', 'copy', finalOutputFileName]);
+      pushDebug('final copy used base output (no caption track provided)');
     }
-  } else {
-    await runFfmpegCommand(['-i', baseOutputFileName, '-map', '0', '-c', 'copy', finalOutputFileName]);
-    pushDebug('final copy used base output (no caption track provided)');
+    const selectedOutput = captionsEmbedded ? captionOutputFileName : finalOutputFileName;
+    assertFsFileExists(module, selectedOutput);
+    pushDebug('final output exists');
+
+    let result: Uint8Array;
+    try {
+      result = module.FS.readFile(selectedOutput);
+    } catch {
+      throw new Error('FFmpeg output file was not generated.');
+    }
+
+    return {
+      blob: new Blob([result], { type: 'video/mp4' }),
+      captionsEmbedded,
+      debugLog
+    };
+  } finally {
+    removeFsFile(module, inputFileName);
+    removeFsFile(module, baseOutputFileName);
+    removeFsFile(module, captionOutputFileName);
+    removeFsFile(module, subtitleTrackOutputFileName);
+    removeFsFile(module, finalOutputFileName);
+
+    if (captionFileName) {
+      removeFsFile(module, captionFileName);
+    }
+    if (captionSrtFileName) {
+      removeFsFile(module, captionSrtFileName);
+    }
+    await resetFfmpegCore('job finished');
+    // Give the browser a tick to reclaim JS/WASM memory before next queue item.
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
   }
-  const selectedOutput = captionsEmbedded ? captionOutputFileName : finalOutputFileName;
-  assertFsFileExists(module, selectedOutput);
-  pushDebug('final output exists');
-
-  let result: Uint8Array;
-  try {
-    result = module.FS.readFile(selectedOutput);
-  } catch {
-    throw new Error('FFmpeg output file was not generated.');
-  }
-
-  removeFsFile(module, inputFileName);
-  removeFsFile(module, baseOutputFileName);
-  removeFsFile(module, captionOutputFileName);
-  removeFsFile(module, subtitleTrackOutputFileName);
-  removeFsFile(module, finalOutputFileName);
-
-  if (captionFileName) {
-    removeFsFile(module, captionFileName);
-  }
-  if (captionSrtFileName) {
-    removeFsFile(module, captionSrtFileName);
-  }
-
-  const output = new Uint8Array(result.byteLength);
-  output.set(result);
-
-  return {
-    blob: new Blob([output.buffer], { type: 'video/mp4' }),
-    captionsEmbedded,
-    debugLog
-  };
 }

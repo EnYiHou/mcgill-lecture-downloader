@@ -118,12 +118,34 @@ chrome.action.onClicked.addListener((tab) => {
     return;
   }
 
-  void chrome.scripting
-    .executeScript({
-      target: { tabId: tab.id },
-      files: ['js/content.js']
-    })
-    .catch((error: unknown) => {
-      console.warn('McLecture overlay injection failed for current tab', error);
+  const openOverlayByMessage = new Promise<boolean>((resolve) => {
+    chrome.tabs.sendMessage(tab.id as number, { type: 'mclecture-open-overlay' }, (response: unknown) => {
+      if (chrome.runtime.lastError) {
+        resolve(false);
+        return;
+      }
+
+      const handled =
+        typeof response === 'object' &&
+        response !== null &&
+        'handled' in response &&
+        Boolean((response as { handled?: boolean }).handled);
+      resolve(handled);
     });
+  });
+
+  void openOverlayByMessage.then((handled) => {
+    if (handled) {
+      return;
+    }
+
+    void chrome.scripting
+      .executeScript({
+        target: { tabId: tab.id as number },
+        files: ['js/content.js']
+      })
+      .catch((error: unknown) => {
+        console.warn('McLecture overlay injection failed for current tab', error);
+      });
+  });
 });

@@ -1,6 +1,7 @@
 import { remuxTsToMp4, type RemuxCaptionTrack } from './ffmpeg';
 import type { DownloadMediaInput } from './types';
 const DEBUG_PREFIX = '[McLecture][download]';
+let downloadPipelineLock: Promise<void> = Promise.resolve();
 
 function debugInfo(message: string): void {
   console.info(`${DEBUG_PREFIX} ${message}`);
@@ -165,6 +166,14 @@ export async function downloadAndRemuxMedia({
   onProgress,
   signal
 }: DownloadMediaInput): Promise<void> {
+  let release: (() => void) | null = null;
+  const previous = downloadPipelineLock;
+  downloadPipelineLock = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await previous;
+
+  try {
   debugInfo(`download start rid=${rid} format=${formatLabel} remuxToMp4=${remuxToMp4} embedCaptions=${embedCaptions}`);
   const params = { f: formatLabel, rid, stoken, etime };
 
@@ -232,4 +241,7 @@ export async function downloadAndRemuxMedia({
   throwIfAborted(signal);
   onProgress?.('Saving file');
   saveBlobDownload(mp4Blob, outputName);
+  } finally {
+    release?.();
+  }
 }

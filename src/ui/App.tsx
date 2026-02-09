@@ -156,12 +156,6 @@ function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'AbortError';
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    window.setTimeout(resolve, ms);
-  });
-}
-
 function dedupeCourseCatalog(items: CourseCatalogEntry[]): CourseCatalogEntry[] {
   const map = new Map<string, CourseCatalogEntry>();
   items.forEach((item) => {
@@ -307,7 +301,6 @@ export function App() {
 
   const [isLoading, setIsLoading] = useState(true);
   const [isDownloading, setIsDownloading] = useState(false);
-  const [isPaused, setIsPaused] = useState(false);
   const [activeDownloadTotal, setActiveDownloadTotal] = useState(0);
   const [activeDownloadCompleted, setActiveDownloadCompleted] = useState(0);
   const [statusMessage, setStatusMessage] = useState('');
@@ -319,9 +312,8 @@ export function App() {
   const [embedCaptions, setEmbedCaptions] = useState(true);
 
   const abortControllerRef = useRef<AbortController | null>(null);
-  const pauseRef = useRef(false);
-  const pauseRequestedRef = useRef(false);
   const stopRequestedRef = useRef(false);
+  const cancelRequestedKeysRef = useRef<Set<string>>(new Set());
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const loadRunRef = useRef(0);
   const parentOriginRef = useRef<string>('*');
@@ -339,7 +331,36 @@ export function App() {
     return map;
   }, [courses]);
 
-  const failedQueueItems = useMemo(() => queueItems.filter((item) => item.status === 'failed'), [queueItems]);
+  const queueStats = useMemo(() => {
+    const stats = {
+      total: queueItems.length,
+      queued: 0,
+      downloading: 0,
+      done: 0,
+      failed: 0,
+      canceled: 0
+    };
+
+    queueItems.forEach((item) => {
+      if (item.status === 'queued') {
+        stats.queued += 1;
+      } else if (item.status === 'downloading') {
+        stats.downloading += 1;
+      } else if (item.status === 'done') {
+        stats.done += 1;
+      } else if (item.status === 'failed') {
+        stats.failed += 1;
+      } else if (item.status === 'canceled') {
+        stats.canceled += 1;
+      }
+    });
+
+    return stats;
+  }, [queueItems]);
+  const hasRunnableQueueItems = useMemo(
+    () => queueItems.some((item) => item.status === 'queued' || item.status === 'failed' || item.status === 'canceled'),
+    [queueItems]
+  );
 
   const visibleCourses = useMemo(
     () => courses.filter((course) => !hiddenCourseDigits.has(course.courseDigit)),
@@ -396,13 +417,14 @@ export function App() {
   );
 
   const persistQueue = useCallback(async (items: DownloadQueueItem[], active: boolean, paused: boolean) => {
-    const completed = items.filter((item) => item.status === 'done').length;
+    const persistedItems = items.filter((item) => item.status !== 'done');
+    const completed = persistedItems.filter((item) => item.status === 'done').length;
     const queueState: DownloadQueueState = {
       active,
       paused,
       completed,
-      total: items.length,
-      items,
+      total: persistedItems.length,
+      items: persistedItems,
       updatedAt: Date.now()
     };
     await storageSet('downloadQueueState', queueState);
@@ -496,7 +518,7 @@ export function App() {
       setCourseCatalog(storedCatalog?.courses ?? []);
 
       if (previousQueue?.items?.length) {
-        let restoredItems = previousQueue.items.map((item) => hydrateQueueItem(item));
+        let restoredItems = previousQueue.items.map((item) => hydrateQueueItem(item)).filter((item) => item.status !== 'done');
         if (previousQueue.active) {
           restoredItems = restoredItems.map((item) => {
             if (item.status === 'downloading' || item.status === 'queued') {
@@ -508,13 +530,13 @@ export function App() {
             }
             return item;
           });
-          setStatusMessage('Previous queue was interrupted. You can retry failed items.');
+          setStatusMessage('Previous queue run was interrupted. Restart queue or run jobs individually.');
           await persistQueue(restoredItems, false, false);
         }
 
         setQueueItems(restoredItems);
         setActiveDownloadTotal(restoredItems.length);
-        setActiveDownloadCompleted(restoredItems.filter((item) => item.status === 'done').length);
+        setActiveDownloadCompleted(0);
       }
 
       if (!isAuthReady(readiness)) {
@@ -812,12 +834,6 @@ export function App() {
 
       if (!isTyping && event.key === ' ' && isDownloading) {
         event.preventDefault();
-        setIsPaused((previous) => {
-          const next = !previous;
-          pauseRef.current = next;
-          void persistQueue(queueItems, true, next);
-          return next;
-        });
       }
     };
 
@@ -825,7 +841,7 @@ export function App() {
     return () => {
       window.removeEventListener('keydown', onKeyDown);
     };
-  }, [activeTab, isDownloading, loadInitialState, persistQueue, queueItems]);
+  }, [activeTab, isDownloading, loadInitialState]);
 
   const toggleCourseExpansion = (courseDigit: string) => {
     setCourses((previous) =>
@@ -1035,21 +1051,29 @@ export function App() {
   }, []);
 
   const runQueue = useCallback(
-    async (initialItems: DownloadQueueItem[]) => {
+    async (initialItems: DownloadQueueItem[], options?: { onlyKeys?: Set<string> }) => {
       if (!auth) {
         setErrorMessage('Missing auth/session data. Open myCourses and play a lecture, then refresh courses.');
         return;
       }
 
-      const workingItems: DownloadQueueItem[] = initialItems.map((item) => ({ ...item, status: 'queued' }));
+      const workingItems: DownloadQueueItem[] = initialItems.map((item) => ({ ...item }));
+      const targetKeys =
+        options?.onlyKeys ??
+        new Set(workingItems.filter((item) => item.status === 'queued').map((item) => item.key));
+
+      if (targetKeys.size === 0) {
+        setQueueItems(workingItems);
+        await persistQueue(workingItems, false, false);
+        return;
+      }
+
       setErrorMessage('');
       setIsDownloading(true);
-      setIsPaused(false);
-      pauseRef.current = false;
-      pauseRequestedRef.current = false;
       stopRequestedRef.current = false;
+      cancelRequestedKeysRef.current.clear();
       setQueueItems(workingItems);
-      setActiveDownloadTotal(workingItems.length);
+      setActiveDownloadTotal(targetKeys.size);
       setActiveDownloadCompleted(0);
       setActiveTab('queue');
       await persistQueue(workingItems, true, false);
@@ -1058,33 +1082,75 @@ export function App() {
       const localDownloaded = new Set(downloaded);
       const failures: string[] = [];
       let stopped = false;
+      let startedCount = 0;
+
+      const applyPendingCancels = () => {
+        let hasChanges = false;
+
+        for (let pendingIndex = 0; pendingIndex < workingItems.length; pendingIndex += 1) {
+          const pendingItem = workingItems[pendingIndex];
+          if (!targetKeys.has(pendingItem.key) || pendingItem.status !== 'queued') {
+            continue;
+          }
+
+          if (cancelRequestedKeysRef.current.has(pendingItem.key)) {
+            cancelRequestedKeysRef.current.delete(pendingItem.key);
+            workingItems[pendingIndex] = {
+              ...pendingItem,
+              status: 'canceled',
+              error: 'Canceled by user.'
+            };
+            hasChanges = true;
+          }
+        }
+
+        return hasChanges;
+      };
 
       for (let index = 0; index < workingItems.length; index += 1) {
-        while (pauseRef.current && !stopRequestedRef.current) {
-          setStatusMessage('Queue paused. Resume to continue.');
-          await sleep(200);
+        if (applyPendingCancels()) {
+          setQueueItems([...workingItems]);
+          await persistQueue(workingItems, true, false);
+        }
+
+        const current = workingItems[index];
+
+        if (!targetKeys.has(current.key) || current.status !== 'queued') {
+          continue;
         }
 
         if (stopRequestedRef.current) {
           stopped = true;
           for (let j = index; j < workingItems.length; j += 1) {
-            if (workingItems[j].status === 'queued' || workingItems[j].status === 'downloading') {
+            if (
+              targetKeys.has(workingItems[j].key) &&
+              (workingItems[j].status === 'queued' || workingItems[j].status === 'downloading')
+            ) {
               workingItems[j] = { ...workingItems[j], status: 'canceled', error: 'Canceled by user.' };
             }
           }
+          setQueueItems([...workingItems]);
           await persistQueue(workingItems, false, false);
           break;
         }
 
-        const current = workingItems[index];
-        workingItems[index] = { ...current, status: 'downloading' };
+        if (cancelRequestedKeysRef.current.has(current.key)) {
+          cancelRequestedKeysRef.current.delete(current.key);
+          workingItems[index] = { ...current, status: 'canceled', error: 'Canceled by user.' };
+          setQueueItems([...workingItems]);
+          await persistQueue(workingItems, true, false);
+          continue;
+        }
+
+        startedCount += 1;
+        workingItems[index] = { ...current, status: 'downloading', error: undefined };
         setQueueItems([...workingItems]);
-        await persistQueue(workingItems, true, pauseRef.current);
+        await persistQueue(workingItems, true, false);
         if (!abortControllerRef.current || abortControllerRef.current.signal.aborted) {
           abortControllerRef.current = new AbortController();
         }
 
-        setStatusMessage(`Downloading ${index + 1}/${workingItems.length}: ${current.recordingName}`);
+        setStatusMessage(`Downloading ${startedCount}/${targetKeys.size}: ${current.recordingName}`);
 
         try {
           await downloadAndRemuxMedia({
@@ -1100,7 +1166,7 @@ export function App() {
             embedCaptions: current.embedCaptions && (current.remuxToMp4 ?? true),
             signal: abortControllerRef.current.signal,
             onProgress: (stage) => {
-              setStatusMessage(`${stage} (${index + 1}/${workingItems.length})`);
+              setStatusMessage(`${stage} (${startedCount}/${targetKeys.size})`);
             }
           });
 
@@ -1109,25 +1175,21 @@ export function App() {
           setDownloaded(new Set(localDownloaded));
           await writeDownloadedItems(localDownloaded);
 
-          workingItems[index] = { ...workingItems[index], status: 'done' };
           setActiveDownloadCompleted((prev) => prev + 1);
+          workingItems.splice(index, 1);
+          setQueueItems([...workingItems]);
+          await persistQueue(workingItems, true, false);
+          index -= 1;
+          continue;
         } catch (error) {
           if (isAbortError(error)) {
-            if (pauseRequestedRef.current) {
-              workingItems[index] = { ...workingItems[index], status: 'queued', error: undefined };
-              setQueueItems([...workingItems]);
-              await persistQueue(workingItems, true, true);
-
-              while (pauseRef.current && !stopRequestedRef.current) {
-                setStatusMessage('Queue paused. Resume to continue.');
-                await sleep(200);
-              }
-
+            if (stopRequestedRef.current || cancelRequestedKeysRef.current.has(current.key)) {
+              cancelRequestedKeysRef.current.delete(current.key);
+              workingItems[index] = { ...workingItems[index], status: 'canceled', error: 'Canceled by user.' };
               if (stopRequestedRef.current) {
                 stopped = true;
-                workingItems[index] = { ...workingItems[index], status: 'canceled', error: 'Canceled by user.' };
                 for (let j = index + 1; j < workingItems.length; j += 1) {
-                  if (workingItems[j].status === 'queued') {
+                  if (targetKeys.has(workingItems[j].key) && workingItems[j].status === 'queued') {
                     workingItems[j] = { ...workingItems[j], status: 'canceled', error: 'Canceled by user.' };
                   }
                 }
@@ -1135,23 +1197,14 @@ export function App() {
                 await persistQueue(workingItems, false, false);
                 break;
               }
-
-              pauseRequestedRef.current = false;
-              abortControllerRef.current = new AbortController();
-              index -= 1;
-              continue;
-            }
-
-            stopped = true;
-            workingItems[index] = { ...workingItems[index], status: 'canceled', error: 'Canceled by user.' };
-            for (let j = index + 1; j < workingItems.length; j += 1) {
-              if (workingItems[j].status === 'queued') {
-                workingItems[j] = { ...workingItems[j], status: 'canceled', error: 'Canceled by user.' };
-              }
+            } else {
+              const err = 'Download was aborted unexpectedly.';
+              workingItems[index] = { ...workingItems[index], status: 'failed', error: err };
+              failures.push(`${current.fileName}: ${err}`);
             }
             setQueueItems([...workingItems]);
-            await persistQueue(workingItems, false, false);
-            break;
+            await persistQueue(workingItems, true, false);
+            continue;
           }
 
           const err = toErrorMessage(error);
@@ -1160,16 +1213,26 @@ export function App() {
         }
 
         setQueueItems([...workingItems]);
-        await persistQueue(workingItems, true, pauseRef.current);
+        await persistQueue(workingItems, true, false);
       }
 
       abortControllerRef.current = null;
-      pauseRequestedRef.current = false;
       stopRequestedRef.current = false;
+      cancelRequestedKeysRef.current.clear();
       setIsDownloading(false);
-      setIsPaused(false);
-      pauseRef.current = false;
-      setStatusMessage(stopped ? 'Download stopped by user.' : '');
+
+      const canceledCount = workingItems.filter(
+        (item) => targetKeys.has(item.key) && item.status === 'canceled'
+      ).length;
+      if (stopped) {
+        setStatusMessage('Queue stopped by user.');
+      } else if (failures.length > 0) {
+        setStatusMessage(`Queue finished with ${failures.length} failed job${failures.length === 1 ? '' : 's'}.`);
+      } else if (canceledCount > 0) {
+        setStatusMessage(`Queue finished with ${canceledCount} canceled job${canceledCount === 1 ? '' : 's'}.`);
+      } else {
+        setStatusMessage('Queue completed.');
+      }
 
       setQueueItems([...workingItems]);
       await persistQueue(workingItems, false, false);
@@ -1182,20 +1245,16 @@ export function App() {
   );
 
   const handleDownload = async () => {
-    if (isDownloading) {
-      return;
-    }
-
     const chosen = Array.from(selected)
       .map((key) => mediaByKey.get(key))
       .filter((item): item is UiMediaItem => Boolean(item));
 
     if (chosen.length === 0) {
-      setErrorMessage('Select at least one video before downloading.');
+      setErrorMessage('Select at least one video to add to queue.');
       return;
     }
 
-    const queue = chosen.map(
+    const candidates = chosen.map(
       (item) => {
         const selectedFormat = selectedFormatByKey[item.key] ?? item.videoType;
         return {
@@ -1215,35 +1274,69 @@ export function App() {
       }
     );
 
-    await runQueue(queue);
-  };
+    const byKey = new Map(queueItems.map((item) => [item.key, item] as const));
+    let addedCount = 0;
 
-  const handleRetryFailed = async () => {
-    if (isDownloading || failedQueueItems.length === 0) {
-      return;
-    }
-
-    const retryQueue: DownloadQueueItem[] = failedQueueItems.map((item) => ({
-      ...item,
-      status: 'queued',
-      error: undefined
-    }));
-
-    await runQueue(retryQueue);
-  };
-
-  const handleRetryItem = async (item: DownloadQueueItem) => {
-    if (isDownloading || item.status !== 'failed') {
-      return;
-    }
-
-    await runQueue([
-      {
-        ...item,
-        status: 'queued',
-        error: undefined
+    candidates.forEach((candidate) => {
+      const existing = byKey.get(candidate.key);
+      if (!existing) {
+        byKey.set(candidate.key, candidate);
+        addedCount += 1;
+        return;
       }
-    ]);
+
+      if (existing.status === 'done' || existing.status === 'failed' || existing.status === 'canceled') {
+        byKey.set(candidate.key, { ...candidate, status: 'queued', error: undefined });
+        addedCount += 1;
+      }
+    });
+
+    const nextQueue = Array.from(byKey.values());
+    setQueueItems(nextQueue);
+    setActiveDownloadTotal(nextQueue.length);
+    setActiveDownloadCompleted(nextQueue.filter((item) => item.status === 'done').length);
+    await persistQueue(nextQueue, isDownloading, false);
+    setStatusMessage(addedCount > 0 ? `${addedCount} item${addedCount === 1 ? '' : 's'} added to queue.` : 'Items are already in queue.');
+    setActiveTab('queue');
+  };
+
+  const handleStartQueue = async () => {
+    if (isDownloading || queueItems.length === 0) {
+      return;
+    }
+
+    const preparedQueue = queueItems.map((item) => {
+      if (item.status === 'failed' || item.status === 'canceled') {
+        return { ...item, status: 'queued', error: undefined };
+      }
+      return item;
+    });
+
+    if (!preparedQueue.some((item) => item.status === 'queued')) {
+      setStatusMessage('No queued jobs to start.');
+      return;
+    }
+
+    setQueueItems(preparedQueue);
+    await persistQueue(preparedQueue, false, false);
+    await runQueue(preparedQueue);
+  };
+
+  const handleStartItem = async (item: DownloadQueueItem) => {
+    if (isDownloading || item.status === 'downloading') {
+      return;
+    }
+
+    const preparedQueue = queueItems.map((entry) => {
+      if (entry.key === item.key) {
+        return { ...entry, status: 'queued', error: undefined };
+      }
+      return entry;
+    });
+
+    setQueueItems(preparedQueue);
+    await persistQueue(preparedQueue, false, false);
+    await runQueue(preparedQueue, { onlyKeys: new Set([item.key]) });
   };
 
   const handleStopDownloading = async () => {
@@ -1253,7 +1346,7 @@ export function App() {
 
     const shouldStop = await askForConfirmation({
       title: 'Stop Downloads?',
-      message: 'Current and queued downloads will be canceled.',
+      message: 'Current and remaining queued downloads in this run will be canceled.',
       confirmLabel: 'Stop Downloads',
       variant: 'danger'
     });
@@ -1262,27 +1355,73 @@ export function App() {
     }
 
     stopRequestedRef.current = true;
-    pauseRequestedRef.current = false;
+    cancelRequestedKeysRef.current.clear();
     abortControllerRef.current?.abort();
   };
 
-  const handleTogglePause = () => {
-    if (!isDownloading) {
+  const handleCancelItem = async (item: DownloadQueueItem) => {
+    if (item.status !== 'queued' && item.status !== 'downloading') {
       return;
     }
 
-    setIsPaused((previous) => {
-      const next = !previous;
-      pauseRef.current = next;
-      if (next) {
-        pauseRequestedRef.current = true;
+    if (isDownloading) {
+      cancelRequestedKeysRef.current.add(item.key);
+      if (item.status === 'downloading') {
         abortControllerRef.current?.abort();
+        setStatusMessage(`Canceling: ${item.recordingName}`);
       } else {
-        pauseRequestedRef.current = false;
+        setStatusMessage(`Cancellation requested: ${item.recordingName}`);
       }
-      void persistQueue(queueItems, true, next);
-      return next;
+      return;
+    }
+
+    if (item.status !== 'queued') {
+      return;
+    }
+
+    const nextQueue = queueItems.map((entry) => {
+      if (entry.key === item.key) {
+        return { ...entry, status: 'canceled', error: 'Canceled by user.' };
+      }
+      return entry;
     });
+
+    setQueueItems(nextQueue);
+    await persistQueue(nextQueue, false, false);
+  };
+
+  const handleClearQueue = async () => {
+    if (isDownloading || queueItems.length === 0) {
+      return;
+    }
+
+    const shouldClear = await askForConfirmation({
+      title: 'Clear Queue?',
+      message: 'This removes all jobs from the queue list. Downloaded files are not deleted.',
+      confirmLabel: 'Clear Queue',
+      variant: 'danger'
+    });
+    if (!shouldClear) {
+      return;
+    }
+
+    setQueueItems([]);
+    setActiveDownloadTotal(0);
+    setActiveDownloadCompleted(0);
+    setStatusMessage('Queue cleared.');
+    await persistQueue([], false, false);
+  };
+
+  const handleRemoveItem = async (item: DownloadQueueItem) => {
+    if (isDownloading) {
+      return;
+    }
+
+    const nextQueue = queueItems.filter((entry) => entry.key !== item.key);
+    setQueueItems(nextQueue);
+    setActiveDownloadTotal(nextQueue.length);
+    setActiveDownloadCompleted(nextQueue.filter((entry) => entry.status === 'done').length);
+    await persistQueue(nextQueue, false, false);
   };
 
   const handleTabKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
@@ -1373,13 +1512,11 @@ export function App() {
             </p>
           </header>
 
-          {(isLoading || isDownloading || isPaused) && (
+          {(isLoading || isDownloading) && (
             <section className="progress-shell smooth-enter" aria-live="polite">
               <div className="spinner" />
               <p>
-                {isDownloading
-                  ? `${isPaused ? 'Paused' : statusMessage || 'Downloading...'} ${activeDownloadCompleted}/${activeDownloadTotal}`
-                  : 'Loading courses...'}
+                {isDownloading ? `${statusMessage || 'Downloading...'} ${activeDownloadCompleted}/${activeDownloadTotal}` : 'Loading courses...'}
               </p>
               <div className="progress-determinate" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progressPercent}>
                 <span style={{ width: `${progressPercent}%` }} />
@@ -1655,12 +1792,31 @@ export function App() {
           {activeTab === 'queue' && (
             <section className="panel smooth-enter" id="panel-queue" role="tabpanel" aria-labelledby="tab-queue" tabIndex={0}>
               <section className="panel-toolbar">
-                <h2>Queue</h2>
+                <h2>Download Queue</h2>
+              </section>
+
+              <section className="queue-summary-grid smooth-enter">
+                <article className="queue-stat-card">
+                  <p>Total</p>
+                  <strong>{queueStats.total}</strong>
+                </article>
+                <article className="queue-stat-card">
+                  <p>Running</p>
+                  <strong>{queueStats.downloading}</strong>
+                </article>
+                <article className="queue-stat-card">
+                  <p>Failed</p>
+                  <strong>{queueStats.failed}</strong>
+                </article>
+                <article className="queue-stat-card">
+                  <p>Canceled</p>
+                  <strong>{queueStats.canceled}</strong>
+                </article>
               </section>
 
               <section className="queue-controls smooth-enter">
-                <button type="button" className="secondary-button" onClick={handleTogglePause} disabled={!isDownloading}>
-                  {isPaused ? 'Resume' : 'Pause'}
+                <button type="button" className="action-button" onClick={() => void handleStartQueue()} disabled={isDownloading || !hasRunnableQueueItems}>
+                  Start Queue
                 </button>
                 <button
                   type="button"
@@ -1668,47 +1824,74 @@ export function App() {
                   onClick={() => void handleStopDownloading()}
                   disabled={!isDownloading}
                 >
-                  Stop
+                  Stop Queue
                 </button>
                 <button
                   type="button"
-                  className="secondary-button"
-                  onClick={() => void handleRetryFailed()}
-                  disabled={isDownloading || failedQueueItems.length === 0}
+                  className="danger-button"
+                  onClick={() => void handleClearQueue()}
+                  disabled={isDownloading || queueItems.length === 0}
                 >
-                  Retry Failed ({failedQueueItems.length})
+                  Clear Queue
                 </button>
               </section>
 
               {queueItems.length > 0 ? (
                 <section className="queue-panel">
-                  <h3>Queue Status</h3>
+                  <h3>Jobs</h3>
                   <ul>
-                    {queueItems.map((item) => (
-                      <li key={item.key} className={`queue-item status-${item.status}`}>
-                        <div>
-                          <strong>{item.recordingName}</strong>
-                          {item.error && <p className="queue-error">{item.error}</p>}
-                        </div>
-                        <div className="queue-item-controls">
-                          <span>{statusLabel(item.status)}</span>
-                          {item.status === 'failed' && (
+                    {queueItems.map((item) => {
+                      const canStart = !isDownloading && item.status !== 'downloading';
+                      const canCancel = item.status === 'queued' || (isDownloading && item.status === 'downloading');
+                      const startLabel =
+                        item.status === 'done' ? 'Run Again' : item.status === 'queued' ? 'Start Job' : item.status === 'downloading' ? 'Running' : 'Retry';
+
+                      return (
+                        <li key={item.key} className={`queue-item status-${item.status}`}>
+                          <div className="queue-item-main">
+                            <div className="queue-item-header">
+                              <strong>{item.recordingName}</strong>
+                              <span className={`queue-status-badge status-${item.status}`}>{statusLabel(item.status)}</span>
+                            </div>
+                            <p className="queue-meta">
+                              {item.fileName}.mp4 | {item.videoType}
+                              {item.embedCaptions ? ' | captions on' : ''}
+                            </p>
+                            {item.error && <p className="queue-error">{item.error}</p>}
+                          </div>
+                          <div className="queue-item-controls">
                             <button
                               type="button"
                               className="secondary-button"
-                              onClick={() => void handleRetryItem(item)}
+                              onClick={() => void handleStartItem(item)}
+                              disabled={!canStart}
+                            >
+                              {startLabel}
+                            </button>
+                            <button
+                              type="button"
+                              className="secondary-button"
+                              onClick={() => void handleCancelItem(item)}
+                              disabled={!canCancel}
+                            >
+                              {item.status === 'downloading' ? 'Cancel Now' : 'Cancel Job'}
+                            </button>
+                            <button
+                              type="button"
+                              className="danger-button"
+                              onClick={() => void handleRemoveItem(item)}
                               disabled={isDownloading}
                             >
-                              Retry
+                              Remove
                             </button>
-                          )}
-                        </div>
-                      </li>
-                    ))}
+                          </div>
+                        </li>
+                      );
+                    })}
                   </ul>
                 </section>
               ) : (
-                <p className="empty-state">No queue yet. Select videos in Courses and click Download Selected.</p>
+                <p className="empty-state">Queue is empty. Select videos in Courses and click Add Selected To Queue.</p>
               )}
             </section>
           )}
@@ -1719,8 +1902,8 @@ export function App() {
               <ol>
                 <li>Open myCourses, log in, and play one lecture video.</li>
                 <li>Go to Courses tab and click Refresh Courses.</li>
-                <li>Select recordings and click Download Selected.</li>
-                <li>Use Queue tab controls to Pause, Stop, and Retry Failed downloads.</li>
+                <li>Select recordings and click Add Selected To Queue.</li>
+                <li>Use Queue tab controls to start, stop, restart, and manage jobs individually.</li>
                 <li>Use Course Library tab to hide courses you do not want loaded.</li>
                 <li>Keep this tab open while downloading.</li>
               </ol>
@@ -1803,7 +1986,7 @@ export function App() {
           onClick={() => void handleDownload()}
           disabled={isDownloading || selected.size === 0 || !authReady}
         >
-          {isDownloading ? 'Downloading...' : `Download Selected (${selected.size})`}
+          {isDownloading ? 'Queue Running...' : `Add Selected To Queue (${selected.size})`}
         </button>
         <p className="disclaimer">Educational use only. This project is not affiliated with or endorsed by McGill University.</p>
       </footer>
