@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "McLecture",
-  "version": "1.2.10",
+  "version": "2.0.0",
   "permissions": ["webRequest", "storage", "scripting", "activeTab"],
   "host_permissions": ["<all_urls>"],
   "background": {
