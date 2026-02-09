@@ -2,19 +2,13 @@
   "manifest_version": 3,
   "name": "McLecture",
   "version": "1.2",
-  "permissions": [
-    "webRequest",
-    "storage",
-    "scripting"
-  ],
-  "host_permissions": [
-    "https://*/*",
-    "http://*/*"
-  ],
+  "permissions": ["webRequest", "storage", "scripting", "activeTab"],
+  "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "js/background.js"
   },
   "action": {
+    "default_title": "Open McLecture overlay",
     "default_icon": {
       "16": "icons/icon.png",
       "32": "icons/icon.png",
@@ -23,32 +17,19 @@
     }
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';",
-    "sandbox": "sandbox allow-scripts allow-forms allow-popups allow-modals; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'; child-src 'self';"
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; worker-src 'self';"
   },
-  "content_scripts": [
-    {
-      "matches": [
-        "<all_urls>"
-      ],
-      "js": [
-        "lib/ffmpeg.min.js",
-        "lib/ffmpeg-core.js"
-      ]
-    }
-  ],
   "web_accessible_resources": [
     {
       "resources": [
         "popup.html",
-        "icons/*",
+        "assets/*",
         "css/*",
+        "icons/*",
         "lib/ffmpeg-core.wasm",
         "lib/ffmpeg-core.worker.js"
       ],
-      "matches": [
-        "<all_urls>"
-      ]
+      "matches": ["<all_urls>"]
     }
   ]
 }
