@@ -28,9 +28,9 @@ export default defineConfig({
         chunkFileNames: 'assets/chunks/[name].js',
         assetFileNames: ({ name }) => {
           if (name?.endsWith('.css')) {
-            return 'css/[name]';
+            return 'css/[name][extname]';
           }
-          return 'assets/[name]';
+          return 'assets/[name][extname]';
         }
       }
     }
