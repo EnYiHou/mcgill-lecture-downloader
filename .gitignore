@@ -3,3 +3,9 @@
 
 # Vscode
 .history
+
+# Node
+node_modules
+
+# Build output
+dist
