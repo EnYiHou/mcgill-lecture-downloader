@@ -40,7 +40,8 @@ export async function readUiPreferences(): Promise<ExtensionStorage['uiPreferenc
     performanceMode: false,
     reducedMotion: false,
     showVisualEffects: true,
-    menuCollapsed: false
+    menuCollapsed: false,
+    remuxToMp4: true
   };
 
   if (!value) {
