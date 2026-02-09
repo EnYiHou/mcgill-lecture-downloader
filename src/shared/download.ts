@@ -1,10 +1,5 @@
 import { remuxTsToMp4, type RemuxCaptionTrack } from './ffmpeg';
 import type { DownloadMediaInput } from './types';
-const DEBUG_PREFIX = '[McLecture][download]';
-
-function debugInfo(message: string): void {
-  console.info(`${DEBUG_PREFIX} ${message}`);
-}
 
 function buildTsMediaUrl(params: Record<string, string>): string {
   return `https://lrscdn.mcgill.ca/api/tsmedia/?${new URLSearchParams(params).toString()}`;
@@ -82,7 +77,6 @@ async function fetchCaptionTrack(
   bearerToken: string | undefined,
   signal?: AbortSignal
 ): Promise<RemuxCaptionTrack> {
-  debugInfo(`fetchCaptionTrack start src=${captionSrc}`);
   const candidates = resolveCaptionCandidates(captionSrc);
   if (candidates.length === 0) {
     throw new Error('No caption URL provided.');
@@ -91,7 +85,6 @@ async function fetchCaptionTrack(
   let lastError: Error | null = null;
 
   for (const url of candidates) {
-    debugInfo(`trying caption candidate ${url}`);
     const headersOptions: Array<Record<string, string> | undefined> = bearerToken
       ? [{ Authorization: bearerToken }, undefined]
       : [undefined];
@@ -106,7 +99,6 @@ async function fetchCaptionTrack(
         });
 
         if (!response.ok) {
-          debugInfo(`caption request failed status=${response.status} url=${url}`);
           lastError = new Error(`Caption request failed: ${response.status} (${url})`);
           continue;
         }
@@ -114,12 +106,10 @@ async function fetchCaptionTrack(
         const raw = await response.text();
         const content = raw.trim();
         if (!content) {
-          debugInfo(`caption response empty url=${url}`);
           lastError = new Error(`Caption file was empty (${url}).`);
           continue;
         }
 
-        debugInfo(`caption fetched bytes=${raw.length} url=${url}`);
         return {
           content: content.startsWith('WEBVTT') ? raw : `WEBVTT\n\n${raw}`,
           language: captionLanguage ?? 'en'
@@ -128,7 +118,6 @@ async function fetchCaptionTrack(
         if (error instanceof DOMException && error.name === 'AbortError') {
           throw error;
         }
-        debugInfo(`caption fetch exception url=${url} error=${error instanceof Error ? error.message : String(error)}`);
         lastError = error instanceof Error ? error : new Error(String(error));
       }
     }
@@ -145,10 +134,7 @@ export function saveBlobDownload(blob: Blob, fileName: string): void {
   document.body.append(anchor);
   anchor.click();
   anchor.remove();
-  // Revoke later to avoid races with the browser download pipeline on large blobs.
-  window.setTimeout(() => {
-    URL.revokeObjectURL(url);
-  }, 60_000);
+  URL.revokeObjectURL(url);
 }
 
 export async function downloadAndRemuxMedia({
@@ -157,7 +143,6 @@ export async function downloadAndRemuxMedia({
   formatLabel = 'VGA',
   stoken,
   etime,
-  remuxToMp4 = true,
   bearerToken,
   captionSrc,
   captionLanguage,
@@ -165,7 +150,6 @@ export async function downloadAndRemuxMedia({
   onProgress,
   signal
 }: DownloadMediaInput): Promise<void> {
-  debugInfo(`download start rid=${rid} format=${formatLabel} remuxToMp4=${remuxToMp4} embedCaptions=${embedCaptions}`);
   const params = { f: formatLabel, rid, stoken, etime };
 
   throwIfAborted(signal);
@@ -187,29 +171,18 @@ export async function downloadAndRemuxMedia({
 
   const tsBlob = await response.blob();
 
-  if (!remuxToMp4) {
-    throwIfAborted(signal);
-    onProgress?.('Saving original stream');
-    saveBlobDownload(tsBlob, `${fileName}.ts`);
-    return;
-  }
-
   let captionTrack: RemuxCaptionTrack | null = null;
   if (embedCaptions && captionSrc) {
     throwIfAborted(signal);
     onProgress?.('Downloading captions');
     try {
       captionTrack = await fetchCaptionTrack(captionSrc, captionLanguage, bearerToken, signal);
-      debugInfo(`caption track ready language=${captionTrack.language ?? 'unknown'} bytes=${captionTrack.content.length}`);
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') {
         throw error;
       }
       onProgress?.('Captions unavailable, continuing without captions');
-      debugInfo(`caption track unavailable: ${error instanceof Error ? error.message : String(error)}`);
     }
-  } else {
-    debugInfo(`caption fetch skipped embedCaptions=${embedCaptions} hasCaptionSrc=${Boolean(captionSrc)}`);
   }
 
   throwIfAborted(signal);
@@ -218,15 +191,14 @@ export async function downloadAndRemuxMedia({
   let mp4Blob: Blob;
 
   try {
-    const remuxResult = await remuxTsToMp4(tsBlob, outputName, captionTrack);
-    mp4Blob = remuxResult.blob;
-    debugInfo(`remux completed captionsEmbedded=${remuxResult.captionsEmbedded}`);
-    remuxResult.debugLog.forEach((line) => debugInfo(`ffmpeg: ${line}`));
+    mp4Blob = await remuxTsToMp4(tsBlob, outputName, captionTrack);
   } catch (error) {
-    if (captionTrack) {
-      debugInfo(`caption embed hard failure: ${error instanceof Error ? error.message : String(error)}`);
+    if (!captionTrack) {
+      throw error;
     }
-    throw error;
+    throwIfAborted(signal);
+    onProgress?.('Caption embed failed, remuxing without captions');
+    mp4Blob = await remuxTsToMp4(tsBlob, outputName);
   }
 
   throwIfAborted(signal);

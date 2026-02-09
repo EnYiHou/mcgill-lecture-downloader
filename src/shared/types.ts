@@ -89,7 +89,6 @@ export interface DownloadMediaInput {
   formatLabel?: string;
   stoken: string;
   etime: string;
-  remuxToMp4?: boolean;
   bearerToken?: string;
   captionSrc?: string | null;
   captionLanguage?: string | null;
@@ -107,7 +106,6 @@ export interface DownloadQueueItem {
   downloadMarker: string;
   fileName: string;
   videoType: string;
-  remuxToMp4?: boolean;
   captionSrc?: string | null;
   captionLanguage?: string | null;
   embedCaptions?: boolean;
@@ -130,7 +128,6 @@ export interface UiPreferences {
   reducedMotion: boolean;
   showVisualEffects: boolean;
   menuCollapsed: boolean;
-  remuxToMp4: boolean;
 }
 
 export interface CourseCatalogEntry {

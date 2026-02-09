@@ -273,8 +273,7 @@ export function App() {
     performanceMode: false,
     reducedMotion: false,
     showVisualEffects: true,
-    menuCollapsed: false,
-    remuxToMp4: true
+    menuCollapsed: false
   });
 
   const [isLoading, setIsLoading] = useState(true);
@@ -292,8 +291,6 @@ export function App() {
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const pauseRef = useRef(false);
-  const pauseRequestedRef = useRef(false);
-  const stopRequestedRef = useRef(false);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const loadRunRef = useRef(0);
   const parentOriginRef = useRef<string>('*');
@@ -456,9 +453,7 @@ export function App() {
         return;
       }
 
-      setUiPreferences(
-        preferences ?? { performanceMode: false, reducedMotion: false, showVisualEffects: true, menuCollapsed: false, remuxToMp4: true }
-      );
+      setUiPreferences(preferences ?? { performanceMode: false, reducedMotion: false, showVisualEffects: true, menuCollapsed: false });
       setDownloaded(downloadedItems);
       setAuthReadiness(readiness);
 
@@ -973,8 +968,6 @@ export function App() {
       setIsDownloading(true);
       setIsPaused(false);
       pauseRef.current = false;
-      pauseRequestedRef.current = false;
-      stopRequestedRef.current = false;
       setQueueItems(workingItems);
       setActiveDownloadTotal(workingItems.length);
       setActiveDownloadCompleted(0);
@@ -987,12 +980,12 @@ export function App() {
       let stopped = false;
 
       for (let index = 0; index < workingItems.length; index += 1) {
-        while (pauseRef.current && !stopRequestedRef.current) {
+        while (pauseRef.current && !abortControllerRef.current.signal.aborted) {
           setStatusMessage('Queue paused. Resume to continue.');
           await sleep(200);
         }
 
-        if (stopRequestedRef.current) {
+        if (abortControllerRef.current.signal.aborted) {
           stopped = true;
           for (let j = index; j < workingItems.length; j += 1) {
             if (workingItems[j].status === 'queued' || workingItems[j].status === 'downloading') {
@@ -1007,9 +1000,6 @@ export function App() {
         workingItems[index] = { ...current, status: 'downloading' };
         setQueueItems([...workingItems]);
         await persistQueue(workingItems, true, pauseRef.current);
-        if (!abortControllerRef.current || abortControllerRef.current.signal.aborted) {
-          abortControllerRef.current = new AbortController();
-        }
 
         setStatusMessage(`Downloading ${index + 1}/${workingItems.length}: ${current.recordingName}`);
 
@@ -1020,11 +1010,10 @@ export function App() {
             formatLabel: current.videoType,
             stoken: auth.stoken,
             etime: auth.etime,
-            remuxToMp4: current.remuxToMp4 ?? true,
             bearerToken: auth.bearer,
             captionSrc: current.captionSrc,
             captionLanguage: current.captionLanguage,
-            embedCaptions: current.embedCaptions && (current.remuxToMp4 ?? true),
+            embedCaptions: current.embedCaptions,
             signal: abortControllerRef.current.signal,
             onProgress: (stage) => {
               setStatusMessage(`${stage} (${index + 1}/${workingItems.length})`);
@@ -1040,35 +1029,6 @@ export function App() {
           setActiveDownloadCompleted((prev) => prev + 1);
         } catch (error) {
           if (isAbortError(error)) {
-            if (pauseRequestedRef.current) {
-              workingItems[index] = { ...workingItems[index], status: 'queued', error: undefined };
-              setQueueItems([...workingItems]);
-              await persistQueue(workingItems, true, true);
-
-              while (pauseRef.current && !stopRequestedRef.current) {
-                setStatusMessage('Queue paused. Resume to continue.');
-                await sleep(200);
-              }
-
-              if (stopRequestedRef.current) {
-                stopped = true;
-                workingItems[index] = { ...workingItems[index], status: 'canceled', error: 'Canceled by user.' };
-                for (let j = index + 1; j < workingItems.length; j += 1) {
-                  if (workingItems[j].status === 'queued') {
-                    workingItems[j] = { ...workingItems[j], status: 'canceled', error: 'Canceled by user.' };
-                  }
-                }
-                setQueueItems([...workingItems]);
-                await persistQueue(workingItems, false, false);
-                break;
-              }
-
-              pauseRequestedRef.current = false;
-              abortControllerRef.current = new AbortController();
-              index -= 1;
-              continue;
-            }
-
             stopped = true;
             workingItems[index] = { ...workingItems[index], status: 'canceled', error: 'Canceled by user.' };
             for (let j = index + 1; j < workingItems.length; j += 1) {
@@ -1091,8 +1051,6 @@ export function App() {
       }
 
       abortControllerRef.current = null;
-      pauseRequestedRef.current = false;
-      stopRequestedRef.current = false;
       setIsDownloading(false);
       setIsPaused(false);
       pauseRef.current = false;
@@ -1132,10 +1090,9 @@ export function App() {
           downloadMarker: item.downloadMarker,
           fileName: item.filename,
           videoType: selectedFormat,
-          remuxToMp4: uiPreferences.remuxToMp4,
           captionSrc: item.captionSrc,
           captionLanguage: item.captionLanguage,
-          embedCaptions: embedCaptions && uiPreferences.remuxToMp4,
+          embedCaptions,
           recordingName: item.recordingName,
           status: 'queued'
         } satisfies DownloadQueueItem;
@@ -1188,8 +1145,6 @@ export function App() {
       return;
     }
 
-    stopRequestedRef.current = true;
-    pauseRequestedRef.current = false;
     abortControllerRef.current?.abort();
   };
 
@@ -1201,12 +1156,6 @@ export function App() {
     setIsPaused((previous) => {
       const next = !previous;
       pauseRef.current = next;
-      if (next) {
-        pauseRequestedRef.current = true;
-        abortControllerRef.current?.abort();
-      } else {
-        pauseRequestedRef.current = false;
-      }
       void persistQueue(queueItems, true, next);
       return next;
     });
@@ -1367,12 +1316,7 @@ export function App() {
                         Mark All Downloaded
                       </button>
                       <label className="inline-toggle">
-                        <input
-                          type="checkbox"
-                          checked={embedCaptions}
-                          onChange={(event) => setEmbedCaptions(event.target.checked)}
-                          disabled={!uiPreferences.remuxToMp4}
-                        />
+                        <input type="checkbox" checked={embedCaptions} onChange={(event) => setEmbedCaptions(event.target.checked)} />
                         Embed captions into MP4 (when available)
                       </label>
                     </section>
@@ -1471,9 +1415,7 @@ export function App() {
                                         <p className="media-meta">
                                           <span className="field-label">Captions:</span>{' '}
                                           {media.captionSrc
-                                            ? `${media.captionLabel ?? media.captionLanguage ?? 'Available'}${
-                                                embedCaptions && uiPreferences.remuxToMp4 ? ' (will embed)' : ' (embedding off)'
-                                              }`
+                                            ? `${media.captionLabel ?? media.captionLanguage ?? 'Available'}${embedCaptions ? ' (will embed)' : ' (embedding off)'}`
                                             : 'Not available'}
                                         </p>
                                         <p className="media-meta">
@@ -1687,14 +1629,6 @@ export function App() {
                     onChange={(event) => void updatePreferences({ reducedMotion: event.target.checked })}
                   />
                   Reduced motion
-                </label>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={uiPreferences.remuxToMp4}
-                    onChange={(event) => void updatePreferences({ remuxToMp4: event.target.checked })}
-                  />
-                  Transform downloads to MP4 (off = keep original .ts stream)
                 </label>
               </section>
             </section>
