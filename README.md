@@ -2,7 +2,9 @@
 
 Chrome extension for downloading McGill myCourses lecture recordings.
 
-Chrome Web Store Link : https://chromewebstore.google.com/detail/mclecture/ipnhkfogmlokecmpgjhdkkibomgbjmlb
+## Chrome Web Store Installation
+
+[Chrome Web Store Link](https://mycourses2.mcgill.ca](https://chromewebstore.google.com/detail/mclecture/ipnhkfogmlokecmpgjhdkkibomgbjmlb))
 
 ## Development setup
 
