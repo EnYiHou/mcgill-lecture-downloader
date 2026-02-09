@@ -1,12 +1,13 @@
 name: Release Chrome Extension
 
 permissions:
-    contents: write
-    packages: write
+  contents: write
+
 on:
   push:
     branches:
-      - main 
+      - main
+
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
@@ -15,17 +16,61 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Zip extension source
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build extension
+        run: npm run build
+
+      - name: Package ZIP artifact from dist
         run: |
-          zip -r mclecture.zip . -x "*.git*" ".github/*" "*.md"  # Exclude Git files & workflows
+          cd dist
+          zip -r ../mclecture-dist.zip .
+          cd ..
+
+      - name: Generate CRX artifact (optional)
+        id: crx
+        env:
+          CHROME_EXTENSION_PRIVATE_KEY: ${{ secrets.CHROME_EXTENSION_PRIVATE_KEY }}
+        run: |
+          if [ -z "${CHROME_EXTENSION_PRIVATE_KEY}" ]; then
+            echo "generated=false" >> "$GITHUB_OUTPUT"
+            echo "No CHROME_EXTENSION_PRIVATE_KEY secret set; skipping CRX generation."
+            exit 0
+          fi
+
+          printf "%s" "${CHROME_EXTENSION_PRIVATE_KEY}" > extension.pem
+          npx --yes crx3@latest --private-key extension.pem --crx mclecture.crx dist
+          rm -f extension.pem
+          echo "generated=true" >> "$GITHUB_OUTPUT"
+
+      - name: Collect release artifacts list
+        id: artifacts
+        run: |
+          files="mclecture-dist.zip"
+          if [ -f "mclecture.crx" ]; then
+            files="${files}"$'\n'"mclecture.crx"
+          fi
+
+          {
+            echo "files<<EOF"
+            echo "${files}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.2.${{ github.run_number }} 
+          tag_name: v1.2.${{ github.run_number }}
           name: Release v1.2.${{ github.run_number }}
           draft: false
           prerelease: false
-          files: mclecture.zip
+          files: ${{ steps.artifacts.outputs.files }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
