@@ -1,0 +1,50 @@
+{
+  "name": "mcgill-lecture-downloader",
+  "version": "1.0.0",
+  "description": "> [!CAUTION] > This extension is still under development. It may contain bugs and has not been thoroughly tested.",
+  "main": "index.js",
+  "directories": {
+    "lib": "lib"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "vite build --watch",
+    "build": "vite build && node scripts/postbuild.mjs",
+    "lint": "eslint src vite.config.ts --max-warnings=0",
+    "format": "prettier --write .",
+    "typecheck": "tsc --noEmit",
+    "clean": "rimraf dist"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/EnYiHou/mcgill-lecture-downloader.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/EnYiHou/mcgill-lecture-downloader/issues"
+  },
+  "homepage": "https://github.com/EnYiHou/mcgill-lecture-downloader#readme",
+  "dependencies": {
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.2",
+    "@types/chrome": "^0.1.36",
+    "@types/node": "^25.2.2",
+    "@types/react": "^19.2.13",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.3",
+    "eslint": "^9.39.2",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.3.0",
+    "prettier": "^3.8.1",
+    "rimraf": "^6.1.2",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.54.0",
+    "vite": "^7.3.1"
+  }
+}
