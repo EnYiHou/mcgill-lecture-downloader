@@ -1,6 +1,6 @@
 :root {
   color-scheme: light;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-family: 'Inter', 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
 * {
@@ -10,16 +10,208 @@
 body {
   margin: 0;
   min-width: 600px;
-  background: #f4f6f8;
-  color: #111827;
+  background: linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);
+  color: #0f172a;
 }
 
 .app-shell {
   min-height: 100vh;
-  padding: 16px;
+  padding: 12px 12px 72px;
 }
 
-h1 {
+.top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.app-title {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.help-button,
+.download-button {
+  border: none;
+  border-radius: 8px;
+  padding: 8px 14px;
+  color: #ffffff;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.help-button {
+  background: #0ea5e9;
+}
+
+.help-panel {
+  border: 1px solid #dbe3ef;
+  border-radius: 10px;
+  background: #ffffff;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+.help-panel h2,
+.help-panel h3 {
   margin: 0 0 8px;
-  font-size: 20px;
+}
+
+.help-panel ol,
+.help-panel ul {
+  margin: 0 0 10px;
+  padding-left: 18px;
+}
+
+.status-banner,
+.error-banner {
+  border-radius: 8px;
+  padding: 10px;
+  margin: 0 0 10px;
+  white-space: pre-wrap;
+}
+
+.status-banner {
+  background: #e0f2fe;
+  color: #0c4a6e;
+}
+
+.error-banner {
+  background: #fee2e2;
+  color: #7f1d1d;
+  font-family: inherit;
+}
+
+.debug-grid {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.debug-item {
+  border-radius: 8px;
+  border: 1px solid #dbe3ef;
+  background: #ffffff;
+  padding: 6px 10px;
+}
+
+.debug-item summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.debug-item pre {
+  margin: 8px 0 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+}
+
+.course-list {
+  display: grid;
+  gap: 10px;
+}
+
+.empty-state {
+  margin: 0;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  padding: 14px;
+  background: #ffffff;
+}
+
+.course-card {
+  border: 1px solid #dbe3ef;
+  border-radius: 10px;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.course-header {
+  width: 100%;
+  border: none;
+  background: #f8fafc;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  text-align: left;
+  padding: 10px 12px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.chevron {
+  font-size: 16px;
+}
+
+.course-body {
+  padding: 10px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.select-row {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+
+.select-row label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.media-list {
+  display: grid;
+  gap: 8px;
+}
+
+.media-item {
+  border: 1px solid #dbe3ef;
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 8px;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.media-item.downloaded {
+  background: #dcfce7;
+  border-color: #86efac;
+}
+
+.media-text p {
+  margin: 0 0 4px;
+  font-size: 13px;
+}
+
+.media-text p:last-child {
+  margin-bottom: 0;
+}
+
+.bottom-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 10px 12px;
+  background: rgba(248, 250, 252, 0.95);
+  border-top: 1px solid #dbe3ef;
+}
+
+.download-button {
+  width: 100%;
+  background: #2563eb;
+}
+
+.download-button:disabled {
+  background: #64748b;
+  cursor: not-allowed;
 }
