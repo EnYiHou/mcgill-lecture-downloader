@@ -142,6 +142,11 @@ function toErrorMessage(error: unknown): string {
   return String(error);
 }
 
+function isUnauthorizedError(error: unknown): boolean {
+  const message = toErrorMessage(error).toLowerCase();
+  return message.includes('401') || message.includes('unauthorized');
+}
+
 function normalizeSearchText(value: unknown): string {
   if (typeof value === 'string') {
     return value.toLowerCase();
@@ -319,6 +324,7 @@ export function App() {
   const parentOriginRef = useRef<string>('*');
   const channelRef = useRef('');
   const mediaSizeFetchInFlightRef = useRef<Set<string>>(new Set());
+  const keepAwakeRequestedRef = useRef(false);
   const logoUrl = chrome.runtime.getURL('icons/icon.png');
 
   const mediaByKey = useMemo(() => {
@@ -492,6 +498,27 @@ export function App() {
     setSelectedFormatByKey({});
     mediaSizeFetchInFlightRef.current.clear();
 
+    const invalidateAuthAndShowSetup = async () => {
+      await Promise.all([
+        storageSet('RecordingsInfo', { stoken: null, etime: null }),
+        storageSet('MediaRecordings', {}),
+        storageSet('CoursesList', { coursesList: [] }),
+        storageSet('Cookies', {})
+      ]);
+      setAuth(null);
+      setAuthReadiness({
+        hasStoken: false,
+        hasEtime: false,
+        hasBearer: false,
+        hasCourses: false,
+        hasCookies: false
+      });
+      setCourses([]);
+      setErrorMessage('Session token expired or unauthorized. Open myCourses, play a lecture, then click Re-check Setup.');
+      setStatusMessage('Re-authentication required.');
+      setActiveTab('courses');
+    };
+
     try {
       const [downloadedItems, previousQueue, storedCatalog, storedHidden, readiness, preferences] = await Promise.all([
         readDownloadedItems(),
@@ -587,6 +614,11 @@ export function App() {
         return;
       }
 
+      if (resolvedCourses.some((result) => result.status === 'rejected' && isUnauthorizedError(result.reason))) {
+        await invalidateAuthAndShowSetup();
+        return;
+      }
+
       resolvedCourses.forEach((result) => {
         if (result.status !== 'fulfilled' || !result.value) {
           return;
@@ -644,6 +676,11 @@ export function App() {
         return;
       }
 
+      if (courseResults.some((result) => result.status === 'rejected' && isUnauthorizedError(result.reason))) {
+        await invalidateAuthAndShowSetup();
+        return;
+      }
+
       const loadedCourses: UiCourse[] = [];
       for (const result of courseResults) {
         if (result.status !== 'fulfilled' || !result.value) {
@@ -683,6 +720,10 @@ export function App() {
       setCourses(loadedCourses);
     } catch (error) {
       if (runId !== loadRunRef.current) {
+        return;
+      }
+      if (isUnauthorizedError(error)) {
+        await invalidateAuthAndShowSetup();
         return;
       }
       setErrorMessage(toErrorMessage(error));
@@ -810,6 +851,45 @@ export function App() {
     window.addEventListener('beforeunload', onBeforeUnload);
     return () => {
       window.removeEventListener('beforeunload', onBeforeUnload);
+    };
+  }, [isDownloading]);
+
+  useEffect(() => {
+    const powerApi = chrome.power;
+    if (!powerApi) {
+      return;
+    }
+
+    if (isDownloading) {
+      if (!keepAwakeRequestedRef.current) {
+        try {
+          powerApi.requestKeepAwake('display');
+          keepAwakeRequestedRef.current = true;
+        } catch (error) {
+          console.warn('Failed to request keep-awake while downloading', error);
+        }
+      }
+    } else if (keepAwakeRequestedRef.current) {
+      try {
+        powerApi.releaseKeepAwake();
+      } catch (error) {
+        console.warn('Failed to release keep-awake', error);
+      } finally {
+        keepAwakeRequestedRef.current = false;
+      }
+    }
+
+    return () => {
+      if (!keepAwakeRequestedRef.current) {
+        return;
+      }
+      try {
+        powerApi.releaseKeepAwake();
+      } catch (error) {
+        console.warn('Failed to release keep-awake on cleanup', error);
+      } finally {
+        keepAwakeRequestedRef.current = false;
+      }
     };
   }, [isDownloading]);
 

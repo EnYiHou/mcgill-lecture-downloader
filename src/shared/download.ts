@@ -17,6 +17,42 @@ function throwIfAborted(signal?: AbortSignal): void {
   }
 }
 
+function isTransientNetworkError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes('network_io_suspended') ||
+    normalized.includes('failed to fetch') ||
+    normalized.includes('networkerror') ||
+    normalized.includes('load failed')
+  );
+}
+
+async function delay(ms: number, signal?: AbortSignal): Promise<void> {
+  if (ms <= 0) {
+    return;
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      cleanup();
+      resolve();
+    }, ms);
+
+    const onAbort = () => {
+      cleanup();
+      reject(new DOMException('Download cancelled by user', 'AbortError'));
+    };
+
+    const cleanup = () => {
+      window.clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
+    };
+
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
 async function getTsMediaSize(
   params: Record<string, string>,
   retries = 10,
@@ -38,6 +74,57 @@ async function getTsMediaSize(
   }
 
   return Number.parseInt(contentRange.split('/')[1], 10);
+}
+
+async function fetchTsStreamWithRetry(
+  params: Record<string, string>,
+  totalBytes: number,
+  retries: number,
+  signal?: AbortSignal
+): Promise<Response> {
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    throwIfAborted(signal);
+    const attemptNo = attempt + 1;
+    try {
+      debugInfo(`ts fetch attempt ${attemptNo}/${retries + 1}`);
+      const response = await fetch(buildTsMediaUrl(params), {
+        signal,
+        headers: {
+          Range: `bytes=0-${totalBytes - 1}`
+        }
+      });
+
+      if (response.status === 206 || response.status === 200) {
+        return response;
+      }
+
+      if (response.status === 401 || response.status === 403) {
+        throw new Error(`Unauthorized when fetching TS stream: ${response.status}`);
+      }
+
+      lastError = new Error(`Unexpected TS response status: ${response.status}`);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        throw error;
+      }
+      lastError = error;
+      if (!isTransientNetworkError(error)) {
+        throw error;
+      }
+      debugInfo(
+        `transient ts fetch error on attempt ${attemptNo}: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+
+    if (attempt < retries) {
+      const backoffMs = Math.min(5000, 600 * (attempt + 1));
+      await delay(backoffMs, signal);
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 
 export interface DetectMediaSizeInput {
@@ -183,16 +270,7 @@ export async function downloadAndRemuxMedia({
 
   throwIfAborted(signal);
   onProgress?.('Downloading TS stream');
-  const response = await fetch(buildTsMediaUrl(params), {
-    signal,
-    headers: {
-      Range: `bytes=0-${totalBytes - 1}`
-    }
-  });
-
-  if (response.status !== 206) {
-    throw new Error(`Expected partial content (206), got ${response.status}`);
-  }
+  const response = await fetchTsStreamWithRetry(params, totalBytes, 4, signal);
 
   const tsBlob = await response.blob();
 
