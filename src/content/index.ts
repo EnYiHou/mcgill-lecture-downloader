@@ -13,6 +13,10 @@
   const TITLE_BAR_ID = 'mclecture-title-bar';
   const CLOSE_BUTTON_ID = 'mclecture-close-button';
   const MINIMIZE_BUTTON_ID = 'mclecture-minimize-button';
+  const CLOSE_CONFIRM_BACKDROP_ID = 'mclecture-close-confirm-backdrop';
+  const CLOSE_CONFIRM_DIALOG_ID = 'mclecture-close-confirm-dialog';
+  const CLOSE_CONFIRM_CANCEL_ID = 'mclecture-close-confirm-cancel';
+  const CLOSE_CONFIRM_ACCEPT_ID = 'mclecture-close-confirm-accept';
   const MINIMIZED_CLASS = 'mclecture-minimized';
   const BOUNDS_STORAGE_KEY = 'overlayBounds';
   const MESSAGE_SOURCE = 'mclecture';
@@ -250,17 +254,23 @@
 
       #${CLOSE_BUTTON_ID},
       #${MINIMIZE_BUTTON_ID} {
-        all: unset;
+        all: initial;
         position: absolute;
-        top: 8px;
-        width: 24px;
-        height: 24px;
-        border-radius: 999px;
+        top: 6px;
+        width: 70px;
+        height: 26px;
+        border-radius: 7px;
         text-align: center;
         color: #ffffff;
         cursor: pointer;
         z-index: 2147483647;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        font-size: 11px;
+        font-weight: 700;
+        line-height: 26px;
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.24);
+        transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
       }
 
       #${CLOSE_BUTTON_ID}:focus-visible,
@@ -269,20 +279,21 @@
         outline-offset: 2px;
       }
 
+      #${CLOSE_BUTTON_ID}:hover,
+      #${MINIMIZE_BUTTON_ID}:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 8px 16px rgba(0, 0, 0, 0.28);
+        filter: brightness(1.05);
+      }
+
       #${CLOSE_BUTTON_ID} {
         right: 8px;
-        background: #dc2626;
-        font-size: 12px;
-        font-weight: 700;
-        line-height: 24px;
+        background: linear-gradient(180deg, #ef4444, #b91c1c);
       }
 
       #${MINIMIZE_BUTTON_ID} {
-        right: 36px;
-        background: #4b5563;
-        font-size: 14px;
-        font-weight: 700;
-        line-height: 24px;
+        right: 82px;
+        background: linear-gradient(180deg, #64748b, #334155);
       }
 
       #${OVERLAY_ID} {
@@ -290,6 +301,66 @@
         inset: 0;
         z-index: 2147483647;
         cursor: move;
+      }
+
+      #${CLOSE_CONFIRM_BACKDROP_ID} {
+        position: absolute;
+        inset: 0;
+        z-index: 2147483647;
+        display: grid;
+        place-items: center;
+        background: rgba(0, 0, 0, 0.42);
+        backdrop-filter: blur(2px);
+      }
+
+      #${CLOSE_CONFIRM_DIALOG_ID} {
+        width: min(360px, calc(100% - 28px));
+        border-radius: 12px;
+        border: 1px solid #d1d5db;
+        background: #ffffff;
+        box-shadow: 0 14px 32px rgba(0, 0, 0, 0.26);
+        padding: 14px;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        color: #111827;
+      }
+
+      #${CLOSE_CONFIRM_DIALOG_ID} h3 {
+        margin: 0 0 8px;
+        font-size: 15px;
+      }
+
+      #${CLOSE_CONFIRM_DIALOG_ID} p {
+        margin: 0;
+        font-size: 13px;
+        line-height: 1.45;
+        color: #374151;
+      }
+
+      #${CLOSE_CONFIRM_DIALOG_ID} .actions {
+        margin-top: 12px;
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+      }
+
+      #${CLOSE_CONFIRM_CANCEL_ID},
+      #${CLOSE_CONFIRM_ACCEPT_ID} {
+        border: none;
+        border-radius: 8px;
+        padding: 7px 11px;
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      #${CLOSE_CONFIRM_CANCEL_ID} {
+        background: #f3f4f6;
+        color: #1f2937;
+      }
+
+      #${CLOSE_CONFIRM_ACCEPT_ID} {
+        background: #b91c1c;
+        color: #ffffff;
       }
 
       @keyframes mclecture-pop-in {
@@ -313,17 +384,93 @@
     return titleBar;
   }
 
-  function detachPopup(userInitiated: boolean): boolean {
-    if (userInitiated && hasActiveDownload) {
-      const shouldClose = window.confirm(
-        'Downloads are still in progress. Closing now may interrupt them. Close anyway?'
-      );
+  function requestCloseConfirmation(root: HTMLElement): Promise<boolean> {
+    const existing = root.querySelector(`#${CLOSE_CONFIRM_BACKDROP_ID}`);
+    if (existing) {
+      return Promise.resolve(false);
+    }
+
+    return new Promise<boolean>((resolve) => {
+      const backdrop = document.createElement('div');
+      backdrop.id = CLOSE_CONFIRM_BACKDROP_ID;
+
+      const dialog = document.createElement('section');
+      dialog.id = CLOSE_CONFIRM_DIALOG_ID;
+
+      const title = document.createElement('h3');
+      title.textContent = hasActiveDownload ? 'Close While Downloading?' : 'Close Popup?';
+
+      const message = document.createElement('p');
+      message.textContent = hasActiveDownload
+        ? 'Downloads are still in progress. Closing this popup may interrupt them.'
+        : 'Close McLecture popup?';
+
+      const actions = document.createElement('div');
+      actions.className = 'actions';
+
+      const cancelButton = document.createElement('button');
+      cancelButton.id = CLOSE_CONFIRM_CANCEL_ID;
+      cancelButton.type = 'button';
+      cancelButton.textContent = 'Cancel';
+
+      const acceptButton = document.createElement('button');
+      acceptButton.id = CLOSE_CONFIRM_ACCEPT_ID;
+      acceptButton.type = 'button';
+      acceptButton.textContent = 'Close';
+
+      const cleanup = () => {
+        backdrop.remove();
+      };
+
+      const complete = (confirmed: boolean) => {
+        cleanup();
+        resolve(confirmed);
+      };
+
+      cancelButton.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        complete(false);
+      });
+
+      acceptButton.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        complete(true);
+      });
+
+      backdrop.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        complete(false);
+      });
+
+      dialog.addEventListener('click', (event) => {
+        event.stopPropagation();
+      });
+
+      dialog.append(title, message, actions);
+      actions.append(cancelButton, acceptButton);
+      backdrop.append(dialog);
+      root.append(backdrop);
+      cancelButton.focus();
+    });
+  }
+
+  async function detachPopup(userInitiated: boolean): Promise<boolean> {
+    const root = document.getElementById(ROOT_ID);
+    if (!root) {
+      return false;
+    }
+
+    if (userInitiated) {
+      const shouldClose = await requestCloseConfirmation(root);
       if (!shouldClose) {
         return false;
       }
     }
 
-    document.getElementById(ROOT_ID)?.remove();
+    root.remove();
     activeFrame = null;
 
     if (saveTimeout !== null) {
@@ -337,13 +484,13 @@
   function createCloseButton(): HTMLButtonElement {
     const closeButton = document.createElement('button');
     closeButton.id = CLOSE_BUTTON_ID;
-    closeButton.textContent = 'X';
+    closeButton.textContent = 'Close';
     closeButton.title = 'Close';
 
     closeButton.addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();
-      detachPopup(true);
+      void detachPopup(true);
     });
 
     return closeButton;
@@ -352,12 +499,12 @@
   function createMinimizeButton(root: HTMLElement): HTMLButtonElement {
     const minimizeButton = document.createElement('button');
     minimizeButton.id = MINIMIZE_BUTTON_ID;
-    minimizeButton.textContent = '−';
+    minimizeButton.textContent = 'Minimize';
     minimizeButton.title = 'Minimize';
 
     const sync = () => {
       const minimized = root.classList.contains(MINIMIZED_CLASS);
-      minimizeButton.textContent = minimized ? '+' : '−';
+      minimizeButton.textContent = minimized ? 'Restore' : 'Minimize';
       minimizeButton.title = minimized ? 'Restore' : 'Minimize';
       minimizeButton.setAttribute('aria-label', minimized ? 'Restore' : 'Minimize');
       scheduleSaveBounds(root);
@@ -380,7 +527,7 @@
     }
 
     root.classList.remove(MINIMIZED_CLASS);
-    minimizeButton.textContent = '−';
+    minimizeButton.textContent = 'Minimize';
     minimizeButton.title = 'Minimize';
     minimizeButton.setAttribute('aria-label', 'Minimize');
     scheduleSaveBounds(root);

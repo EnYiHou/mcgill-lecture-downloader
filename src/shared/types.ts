@@ -9,7 +9,8 @@ export type StorageKey =
   | 'uiPreferences'
   | 'courseCatalog'
   | 'hiddenCourseDigits'
-  | 'overlayBounds';
+  | 'overlayBounds'
+  | 'quickTutorialSeen';
 
 export interface RecordingsInfo {
   url?: string;
@@ -46,6 +47,7 @@ export interface ExtensionStorage {
   courseCatalog?: CourseCatalog;
   hiddenCourseDigits?: HiddenCourseDigits;
   overlayBounds?: OverlayBounds;
+  quickTutorialSeen?: boolean;
 }
 
 export interface MediaSource {
