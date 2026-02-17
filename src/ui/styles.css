@@ -390,13 +390,42 @@ input:focus-visible,
 }
 
 .tutorial-actions .secondary-button,
-.tutorial-actions .action-button {
+.tutorial-actions .tutorial-primary-button {
   white-space: nowrap;
   flex-shrink: 0;
 }
 
 .tutorial-actions .secondary-button {
   width: auto;
+}
+
+.tutorial-primary-button {
+  border: none;
+  border-radius: 10px;
+  padding: 9px 12px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  width: auto;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  white-space: nowrap;
+  background: var(--mcgill-red);
+  color: #ffffff;
+  transition: transform 0.22s ease, box-shadow 0.22s ease, background 0.22s ease, opacity 0.22s ease;
+}
+
+.tutorial-primary-button:focus-visible {
+  outline: 2px solid #7d1628;
+  outline-offset: 2px;
+}
+
+.tutorial-primary-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 22px rgba(126, 22, 40, 0.2);
 }
 
 .tutorial-icon-button {
@@ -1042,7 +1071,8 @@ input:focus-visible,
 .download-button:disabled,
 .secondary-button:disabled,
 .danger-button:disabled,
-.action-button:disabled {
+.action-button:disabled,
+.tutorial-primary-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
   box-shadow: none;

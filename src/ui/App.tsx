@@ -1368,7 +1368,11 @@ export function App() {
   const handleQuickTutorialBack = useCallback(() => {
     const requestedStepId = getPreviousTutorialStepId(quickTutorialStepId, quickTutorialPlanStepIds);
     setQuickTutorialStepId(requestedStepId);
-  }, [quickTutorialPlanStepIds, quickTutorialStepId]);
+    const requestedStep = getTutorialStep(requestedStepId);
+    if (activeTab !== requestedStep.tab) {
+      setActiveTab(requestedStep.tab);
+    }
+  }, [activeTab, quickTutorialPlanStepIds, quickTutorialStepId]);
 
   useEffect(() => {
     if (!showQuickTutorial) {
@@ -2691,11 +2695,16 @@ export function App() {
               Previous 
             </button>
             {isLastTutorialStep ? (
-              <button type="button" className="action-button" onClick={() => void completeQuickTutorial()}>
+              <button type="button" className="tutorial-primary-button" onClick={() => void completeQuickTutorial()}>
                 Finish
               </button>
             ) : (
-              <button type="button" className="action-button" onClick={handleQuickTutorialNext} disabled={!tutorialEvaluation.isComplete}>
+              <button
+                type="button"
+                className="tutorial-primary-button"
+                onClick={handleQuickTutorialNext}
+                disabled={!tutorialEvaluation.isComplete}
+              >
                 Continue
               </button>
             )}

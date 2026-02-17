@@ -97,6 +97,17 @@ describe('tutorialFlow.evaluateTutorialStep', () => {
     expect(evaluation.blockerMessage).toContain('Click Add Selected To Queue');
   });
 
+  it('keeps add-to-queue complete after auto-switch to queue tab', () => {
+    const evaluation = evaluateTutorialStep('add_selected_to_queue', {
+      ...baseState,
+      activeTab: 'queue',
+      queueItemsCount: 1
+    });
+
+    expect(evaluation.isComplete).toBe(true);
+    expect(evaluation.blockerMessage).toBeNull();
+  });
+
   it('auto-completes add-to-queue step when there is nothing to download', () => {
     const evaluation = evaluateTutorialStep('add_selected_to_queue', {
       ...baseState,

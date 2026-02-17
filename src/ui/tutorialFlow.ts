@@ -244,6 +244,13 @@ export function evaluateTutorialStep(stepId: TutorialStepId, state: TutorialRunt
       };
     }
     case 'add_selected_to_queue': {
+      if (state.queueItemsCount > 0) {
+        return {
+          isComplete: true,
+          blockerMessage: null,
+          requiresTargetClick: false
+        };
+      }
       if (state.activeTab !== 'courses') {
         return {
           isComplete: false,
