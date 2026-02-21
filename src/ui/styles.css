@@ -62,9 +62,22 @@ body {
 
 .header-meta {
   margin: 0;
-  font-size: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  font-size: 11px;
   color: #6d2735;
-  font-weight: 600;
+  font-weight: 700;
+}
+
+.header-meta span {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #efc9d0;
+  border-radius: 999px;
+  background: #fff8f9;
+  padding: 3px 8px;
 }
 
 .workspace {
@@ -264,197 +277,6 @@ input:focus-visible,
   display: flex;
   justify-content: flex-end;
   gap: 8px;
-}
-
-.tutorial-spotlight {
-  position: fixed;
-  inset: 0;
-  z-index: 41;
-  pointer-events: none;
-}
-
-.tutorial-spotlight-panel {
-  position: fixed;
-  background: rgba(41, 14, 20, 0.36);
-  pointer-events: none;
-}
-
-.tutorial-spotlight-blur .tutorial-spotlight-panel {
-  backdrop-filter: blur(3px);
-  -webkit-backdrop-filter: blur(3px);
-}
-
-.tutorial-coach {
-  position: fixed;
-  left: 12px;
-  top: 12px;
-  z-index: 43;
-  width: min(320px, calc(100vw - 24px));
-  border-radius: 12px;
-  border: 1px solid #efc9d0;
-  background: #fff8f9;
-  box-shadow: 0 20px 44px rgba(82, 23, 36, 0.28);
-  padding: 14px;
-  overflow: auto;
-}
-
-.tutorial-pointer {
-  position: absolute;
-  width: 14px;
-  height: 14px;
-  background: #fff8f9;
-  border-top: 1px solid #efc9d0;
-  border-left: 1px solid #efc9d0;
-  pointer-events: none;
-  z-index: 1;
-}
-
-.tutorial-pointer-bottom {
-  top: 0;
-  transform: translate(-50%, -50%) rotate(45deg);
-}
-
-.tutorial-pointer-top {
-  bottom: 0;
-  transform: translate(-50%, 50%) rotate(225deg);
-}
-
-.tutorial-pointer-right {
-  left: 0;
-  transform: translate(-50%, -50%) rotate(315deg);
-}
-
-.tutorial-pointer-left {
-  right: 0;
-  transform: translate(50%, -50%) rotate(135deg);
-}
-
-.tutorial-kicker {
-  margin: 0 0 6px;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: #8b3345;
-}
-
-.tutorial-coach h2 {
-  margin: 0 0 8px;
-  color: #5a1f2c;
-  font-size: 16px;
-}
-
-.tutorial-coach p {
-  margin: 0 0 10px;
-  font-size: 13px;
-  color: #6d2735;
-  line-height: 1.5;
-}
-
-.tutorial-target-hint {
-  font-weight: 700;
-  color: #5a1f2c !important;
-}
-
-.tutorial-note {
-  padding: 8px 10px;
-  border-radius: 8px;
-  border: 1px solid #ead5aa;
-  background: #fff7df;
-  color: #6d4d00 !important;
-}
-
-.tutorial-blocker {
-  padding: 8px 10px;
-  border-radius: 8px;
-  border: 1px solid #efc1c9;
-  background: #fff0f3;
-  color: #8a2538 !important;
-  font-weight: 700;
-}
-
-.tutorial-progress {
-  margin-bottom: 14px !important;
-  font-size: 12px !important;
-  font-weight: 700;
-  color: #7d1628 !important;
-}
-
-.tutorial-actions {
-  display: flex;
-  flex-wrap: nowrap;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-
-.tutorial-actions .secondary-button,
-.tutorial-actions .tutorial-primary-button {
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-.tutorial-actions .secondary-button {
-  width: auto;
-}
-
-.tutorial-primary-button {
-  border: none;
-  border-radius: 10px;
-  padding: 9px 12px;
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 700;
-  width: auto;
-  min-width: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  white-space: nowrap;
-  background: var(--mcgill-red);
-  color: #ffffff;
-  transition: transform 0.22s ease, box-shadow 0.22s ease, background 0.22s ease, opacity 0.22s ease;
-}
-
-.tutorial-primary-button:focus-visible {
-  outline: 2px solid #7d1628;
-  outline-offset: 2px;
-}
-
-.tutorial-primary-button:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 8px 22px rgba(126, 22, 40, 0.2);
-}
-
-.tutorial-icon-button {
-  width: 30px;
-  height: 30px;
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  line-height: 1;
-}
-
-.tutorial-highlight {
-  position: relative;
-  z-index: 46;
-  outline: 3px solid #9e1b32 !important;
-  outline-offset: 3px;
-  border-radius: 10px;
-  animation: tutorialPulse 1.2s ease-in-out infinite;
-}
-
-.tutorial-highlight::before {
-  content: '';
-  position: absolute;
-  inset: -5px;
-  border-radius: 12px;
-  border: 2px solid rgba(158, 27, 50, 0.3);
-  pointer-events: none;
 }
 
 .menu-button {
@@ -680,27 +502,63 @@ input:focus-visible,
 }
 
 .course-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  display: grid;
   gap: 8px;
   padding: 8px;
   border-bottom: 1px solid #f2d6db;
-}
-
-.course-title {
   border: none;
   background: transparent;
   width: 100%;
   text-align: left;
+  cursor: pointer;
+}
+
+.course-title-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 8px;
+}
+
+.course-title-text {
   font-size: 14px;
   font-weight: 700;
   color: #4a1a25;
-  cursor: pointer;
+}
+
+.course-header-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(88px, 88px));
+  gap: 5px;
+}
+
+.course-stat-chip {
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  border: 1px solid #efc9d0;
+  border-radius: 999px;
+  background: #fff7f8;
+  min-height: 34px;
+  padding: 4px 8px;
+  text-align: center;
+}
+
+.course-stat-chip strong {
+  font-size: 12px;
+  font-weight: 700;
+  color: #6d2735;
+  line-height: 1;
+}
+
+.course-stat-chip small {
+  margin-top: 2px;
+  font-size: 9px;
+  font-weight: 700;
+  color: #8a3b4d;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
 }
 
 .chevron {
@@ -1019,6 +877,28 @@ input:focus-visible,
   border: 1px solid #efc9d0;
 }
 
+.tutorial-text-panel {
+  margin-bottom: 12px;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid #efc9d0;
+  background: #fff8f9;
+  display: grid;
+  gap: 8px;
+}
+
+.tutorial-text-panel h3 {
+  margin: 0;
+  color: var(--mcgill-red);
+  font-size: 14px;
+}
+
+.tutorial-text-panel p {
+  margin: 0;
+  color: #6d2735;
+  font-size: 13px;
+}
+
 .permissions-panel h3,
 .preferences-panel h3,
 .onboarding-panel h2 {
@@ -1071,8 +951,7 @@ input:focus-visible,
 .download-button:disabled,
 .secondary-button:disabled,
 .danger-button:disabled,
-.action-button:disabled,
-.tutorial-primary-button:disabled {
+.action-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
   box-shadow: none;
@@ -1135,18 +1014,6 @@ input:focus-visible,
   to {
     opacity: 1;
     transform: translateY(0);
-  }
-}
-
-@keyframes tutorialPulse {
-  0% {
-    box-shadow: 0 0 0 2px rgba(158, 27, 50, 0.18);
-  }
-  50% {
-    box-shadow: 0 0 0 7px rgba(158, 27, 50, 0.24);
-  }
-  100% {
-    box-shadow: 0 0 0 2px rgba(158, 27, 50, 0.18);
   }
 }
 

@@ -1,7 +1,6 @@
 import {
   Suspense,
   lazy,
-  type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
   useCallback,
   useEffect,
@@ -13,19 +12,6 @@ import { detectMediaSizeBytes, downloadAndRemuxMedia } from '../shared/download'
 import { createDownloadMarker, createLegacyFilenameMarker, isDownloaded } from '../shared/downloadMarkers';
 import { mapWithConcurrency } from '../shared/async';
 import { fetchCourseMediaList, resolveCourseDigit } from '../shared/mcgillApi';
-import {
-  evaluateTutorialStep,
-  FIRST_TUTORIAL_STEP_ID,
-  getTutorialPlan,
-  getNextTutorialStepId,
-  getPreviousTutorialStepId,
-  getTutorialStep,
-  getTutorialStepProgress,
-  type TutorialRuntimeState,
-  type TutorialStepId,
-  type TutorialTab
-} from './tutorialFlow';
-import { buildTutorialSpotlightPanels, type SpotlightPanels } from './tutorialSpotlight';
 import {
   readAuthReadiness,
   readDownloadedItems,
@@ -101,7 +87,7 @@ interface ConfirmDialogState {
   resolve: (confirmed: boolean) => void;
 }
 
-type MenuTab = TutorialTab;
+type MenuTab = 'courses' | 'library' | 'queue' | 'guide';
 
 const TAB_ORDER: readonly MenuTab[] = ['courses', 'library', 'queue', 'guide'];
 const PARENT_MESSAGE_SOURCE = 'mclecture';
@@ -299,19 +285,6 @@ function formatBytes(bytes: number | null | undefined): string {
   return `${value.toFixed(decimals)} ${units[unitIndex]}`;
 }
 
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(Math.max(value, min), max);
-}
-
-function toFixedRectStyle(rect: { left: number; top: number; width: number; height: number }): CSSProperties {
-  return {
-    left: `${rect.left}px`,
-    top: `${rect.top}px`,
-    width: `${rect.width}px`,
-    height: `${rect.height}px`
-  };
-}
-
 export function App() {
   const [activeTab, setActiveTab] = useState<MenuTab>('courses');
   const [courses, setCourses] = useState<UiCourse[]>([]);
@@ -339,16 +312,7 @@ export function App() {
   const [errorMessage, setErrorMessage] = useState('');
   const [queueItems, setQueueItems] = useState<DownloadQueueItem[]>([]);
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null);
-  const [showQuickTutorial, setShowQuickTutorial] = useState(false);
-  const [quickTutorialPlanStepIds, setQuickTutorialPlanStepIds] = useState<TutorialStepId[]>(() => getTutorialPlan(false));
-  const [quickTutorialStepId, setQuickTutorialStepId] = useState<TutorialStepId>(FIRST_TUTORIAL_STEP_ID);
-  const [tutorialCompletedStepIds, setTutorialCompletedStepIds] = useState<Set<TutorialStepId>>(new Set());
-  const [tutorialStartedWithAuthReady, setTutorialStartedWithAuthReady] = useState(false);
-  const [tutorialTargetVisible, setTutorialTargetVisible] = useState(false);
-  const [tutorialCoachStyle, setTutorialCoachStyle] = useState<CSSProperties>({});
-  const [tutorialPointerStyle, setTutorialPointerStyle] = useState<CSSProperties>({});
-  const [tutorialCoachPlacement, setTutorialCoachPlacement] = useState<'top' | 'bottom' | 'left' | 'right'>('bottom');
-  const [tutorialSpotlightPanels, setTutorialSpotlightPanels] = useState<SpotlightPanels | null>(null);
+  const [showTutorialNotice, setShowTutorialNotice] = useState(false);
   const [mediaSizeBytesByKey, setMediaSizeBytesByKey] = useState<Record<string, number | null>>({});
   const [selectedFormatByKey, setSelectedFormatByKey] = useState<Record<string, string>>({});
   const [embedCaptions, setEmbedCaptions] = useState(true);
@@ -361,11 +325,6 @@ export function App() {
   const loadRunRef = useRef(0);
   const parentOriginRef = useRef<string>('*');
   const channelRef = useRef('');
-  const tutorialCoachRef = useRef<HTMLElement | null>(null);
-  const tutorialTargetRef = useRef<Element | null>(null);
-  const tutorialStepEntryRef = useRef<TutorialStepId | null>(null);
-  const tutorialPositionRafRef = useRef<number | null>(null);
-  const tutorialMenuCollapsedAtStartRef = useRef<boolean | null>(null);
   const mediaSizeFetchInFlightRef = useRef<Set<string>>(new Set());
   const keepAwakeRequestedRef = useRef(false);
   const logoUrl = chrome.runtime.getURL('icons/icon.png');
@@ -485,42 +444,22 @@ export function App() {
       allVisibleNotDownloadedMediaKeys.every((key) => selected.has(key)),
     [allVisibleNotDownloadedMediaKeys, selected]
   );
-  const tutorialRuntimeState = useMemo<TutorialRuntimeState>(
-    () => ({
-      authReady,
-      activeTab,
-      showCourseActions,
-      visibleNotDownloadedCount: allVisibleNotDownloadedMediaKeys.length,
-      selectedCount: selected.size,
-      queueItemsCount: queueItems.length,
-      hasRunnableQueueItems,
-      isDownloading,
-      completedStepIds: tutorialCompletedStepIds
-    }),
-    [
-      activeTab,
-      allVisibleNotDownloadedMediaKeys.length,
-      authReady,
-      hasRunnableQueueItems,
-      isDownloading,
-      queueItems.length,
-      selected.size,
-      showCourseActions,
-      tutorialCompletedStepIds
-    ]
-  );
-  const currentTutorialStep = useMemo(() => getTutorialStep(quickTutorialStepId), [quickTutorialStepId]);
-  const tutorialProgress = useMemo(
-    () => getTutorialStepProgress(quickTutorialStepId, quickTutorialPlanStepIds),
-    [quickTutorialPlanStepIds, quickTutorialStepId]
-  );
-  const tutorialEvaluation = useMemo(
-    () => evaluateTutorialStep(quickTutorialStepId, tutorialRuntimeState),
-    [quickTutorialStepId, tutorialRuntimeState]
-  );
-  const isLastTutorialStep = tutorialProgress.current === tutorialProgress.total;
-  const showSetupReadyNote = tutorialStartedWithAuthReady && currentTutorialStep.id === 'open_courses_tab';
-  const tutorialUseBlurSpotlight = !uiPreferences.performanceMode && !uiPreferences.reducedMotion;
+  const courseSummaryStats = useMemo(() => {
+    const visibleMediaCount = visibleCourses.reduce((count, course) => count + course.media.length, 0);
+    const visibleDownloadedCount = visibleCourses.reduce(
+      (count, course) => count + course.media.filter((item) => isMediaDownloaded(item)).length,
+      0
+    );
+    const visibleNotDownloadedCount = visibleMediaCount - visibleDownloadedCount;
+
+    return {
+      totalCourses: courseCatalog.length || courses.length,
+      visibleCourses: filteredCourses.length,
+      visibleMediaCount,
+      visibleDownloadedCount,
+      visibleNotDownloadedCount
+    };
+  }, [courseCatalog.length, courses.length, filteredCourses.length, isMediaDownloaded, visibleCourses]);
 
   const persistQueue = useCallback(async (items: DownloadQueueItem[], active: boolean, paused: boolean) => {
     const persistedItems = items.filter((item) => item.status !== 'done');
@@ -643,25 +582,7 @@ export function App() {
       };
       const loadedPreferences = preferences ?? defaultPreferences;
       setUiPreferences(loadedPreferences);
-      if (!tutorialSeen) {
-        const authReadyAtStart = isAuthReady(readiness);
-        const planStepIds = getTutorialPlan(authReadyAtStart);
-        tutorialStepEntryRef.current = null;
-        tutorialMenuCollapsedAtStartRef.current = loadedPreferences.menuCollapsed;
-        if (loadedPreferences.menuCollapsed) {
-          const expandedPreferences: UiPreferences = {
-            ...loadedPreferences,
-            menuCollapsed: false
-          };
-          setUiPreferences(expandedPreferences);
-          await storageSet('uiPreferences', expandedPreferences);
-        }
-        setQuickTutorialPlanStepIds(planStepIds);
-        setQuickTutorialStepId(planStepIds[0] ?? FIRST_TUTORIAL_STEP_ID);
-        setTutorialCompletedStepIds(new Set());
-        setTutorialStartedWithAuthReady(authReadyAtStart);
-        setShowQuickTutorial(true);
-      }
+      setShowTutorialNotice(!tutorialSeen);
       setDownloaded(downloadedItems);
       setAuthReadiness(readiness);
 
@@ -1314,391 +1235,10 @@ export function App() {
     });
   }, []);
 
-  const startQuickTutorial = useCallback(
-    (authReadyAtStart: boolean) => {
-      const planStepIds = getTutorialPlan(authReadyAtStart);
-      tutorialStepEntryRef.current = null;
-      tutorialMenuCollapsedAtStartRef.current = isMenuCollapsed;
-      if (isMenuCollapsed) {
-        void updatePreferences({ menuCollapsed: false });
-      }
-      setQuickTutorialPlanStepIds(planStepIds);
-      setQuickTutorialStepId(planStepIds[0] ?? FIRST_TUTORIAL_STEP_ID);
-      setTutorialCompletedStepIds(new Set());
-      setTutorialStartedWithAuthReady(authReadyAtStart);
-      setShowQuickTutorial(true);
-    },
-    [isMenuCollapsed, updatePreferences]
-  );
-
-  const completeQuickTutorial = useCallback(async () => {
-    setShowQuickTutorial(false);
-    tutorialTargetRef.current?.classList.remove('tutorial-highlight');
-    tutorialTargetRef.current = null;
-    tutorialStepEntryRef.current = null;
-    setTutorialTargetVisible(false);
-    setTutorialCoachStyle({});
-    setTutorialPointerStyle({});
-    setTutorialSpotlightPanels(null);
-    const restoreMenuCollapsed = tutorialMenuCollapsedAtStartRef.current === true;
-    tutorialMenuCollapsedAtStartRef.current = null;
-    if (restoreMenuCollapsed) {
-      await updatePreferences({ menuCollapsed: true });
-    }
+  const dismissTutorialNotice = useCallback(async () => {
+    setShowTutorialNotice(false);
     await storageSet('quickTutorialSeen', true);
-  }, [updatePreferences]);
-
-  const replayQuickTutorial = useCallback(() => {
-    startQuickTutorial(authReady);
-  }, [authReady, startQuickTutorial]);
-
-  const handleQuickTutorialNext = useCallback(() => {
-    if (!tutorialEvaluation.isComplete) {
-      return;
-    }
-    if (isLastTutorialStep) {
-      void completeQuickTutorial();
-      return;
-    }
-
-    const requestedStepId = getNextTutorialStepId(quickTutorialStepId, quickTutorialPlanStepIds);
-    setQuickTutorialStepId(requestedStepId);
-  }, [completeQuickTutorial, isLastTutorialStep, quickTutorialPlanStepIds, quickTutorialStepId, tutorialEvaluation.isComplete]);
-
-  const handleQuickTutorialBack = useCallback(() => {
-    const requestedStepId = getPreviousTutorialStepId(quickTutorialStepId, quickTutorialPlanStepIds);
-    setQuickTutorialStepId(requestedStepId);
-    const requestedStep = getTutorialStep(requestedStepId);
-    if (activeTab !== requestedStep.tab) {
-      setActiveTab(requestedStep.tab);
-    }
-  }, [activeTab, quickTutorialPlanStepIds, quickTutorialStepId]);
-
-  useEffect(() => {
-    if (!showQuickTutorial) {
-      tutorialTargetRef.current?.classList.remove('tutorial-highlight');
-      tutorialTargetRef.current = null;
-      tutorialStepEntryRef.current = null;
-      setTutorialTargetVisible(false);
-      setTutorialCoachStyle({});
-      setTutorialPointerStyle({});
-      setTutorialSpotlightPanels(null);
-      return;
-    }
-  }, [showQuickTutorial]);
-
-  useEffect(() => {
-    if (!showQuickTutorial) {
-      return;
-    }
-
-    if (!currentTutorialStep.targetSelector) {
-      tutorialTargetRef.current?.classList.remove('tutorial-highlight');
-      tutorialTargetRef.current = null;
-      setTutorialTargetVisible(false);
-      setTutorialPointerStyle({});
-      setTutorialSpotlightPanels(null);
-      tutorialStepEntryRef.current = currentTutorialStep.id;
-      return;
-    }
-
-    const target = document.querySelector<HTMLElement>(currentTutorialStep.targetSelector);
-    if (!target) {
-      tutorialTargetRef.current?.classList.remove('tutorial-highlight');
-      tutorialTargetRef.current = null;
-      setTutorialTargetVisible(false);
-      setTutorialSpotlightPanels(null);
-      return;
-    }
-
-    tutorialTargetRef.current?.classList.remove('tutorial-highlight');
-    tutorialTargetRef.current = target;
-    setTutorialTargetVisible(true);
-    target.classList.add('tutorial-highlight');
-    if (tutorialStepEntryRef.current !== currentTutorialStep.id) {
-      target.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
-      tutorialStepEntryRef.current = currentTutorialStep.id;
-    }
-
-    const placeCoach = () => {
-      if (!document.body.contains(target)) {
-        return;
-      }
-
-      const coachElement = tutorialCoachRef.current;
-      if (!coachElement) {
-        return;
-      }
-
-      const targetRect = target.getBoundingClientRect();
-      const coachRect = coachElement.getBoundingClientRect();
-      const viewportPadding = 12;
-      const viewportWidth = window.innerWidth;
-      const viewportHeight = window.innerHeight;
-      const gap = 14;
-      const coachWidth = Math.min(coachRect.width, viewportWidth - viewportPadding * 2);
-      const coachHeight = Math.min(coachRect.height, viewportHeight - viewportPadding * 2);
-      const centerX = targetRect.left + targetRect.width / 2;
-      const centerY = targetRect.top + targetRect.height / 2;
-      const placements: Array<'bottom' | 'top' | 'right' | 'left'> = ['bottom', 'top', 'right', 'left'];
-      type CoachPlacement = 'bottom' | 'top' | 'right' | 'left';
-      interface CoachCandidate {
-        placement: CoachPlacement;
-        left: number;
-        top: number;
-        priority: number;
-      }
-      const buildCandidates = (width: number, height: number) => {
-        const bounds = {
-          minLeft: viewportPadding,
-          maxLeft: Math.max(viewportPadding, viewportWidth - width - viewportPadding),
-          minTop: viewportPadding,
-          maxTop: Math.max(viewportPadding, viewportHeight - height - viewportPadding)
-        };
-        const directionalCandidates: CoachCandidate[] = placements.map((placement, index) => {
-          if (placement === 'bottom') {
-            return {
-              placement,
-              left: clamp(centerX - width / 2, bounds.minLeft, bounds.maxLeft),
-              top: targetRect.bottom + gap,
-              priority: index
-            };
-          }
-          if (placement === 'top') {
-            return {
-              placement,
-              left: clamp(centerX - width / 2, bounds.minLeft, bounds.maxLeft),
-              top: targetRect.top - height - gap,
-              priority: index
-            };
-          }
-          if (placement === 'right') {
-            return {
-              placement,
-              left: targetRect.right + gap,
-              top: clamp(centerY - height / 2, bounds.minTop, bounds.maxTop),
-              priority: index
-            };
-          }
-          return {
-            placement,
-            left: targetRect.left - width - gap,
-            top: clamp(centerY - height / 2, bounds.minTop, bounds.maxTop),
-            priority: index
-          };
-        });
-
-        // Extra corner anchors keep the coach away from center controls on tight layouts.
-        const cornerAnchors: Array<{ left: number; top: number }> = [
-          { left: bounds.minLeft, top: bounds.minTop },
-          { left: bounds.maxLeft, top: bounds.minTop },
-          { left: bounds.minLeft, top: bounds.maxTop },
-          { left: bounds.maxLeft, top: bounds.maxTop }
-        ];
-
-        const cornerCandidates: CoachCandidate[] = cornerAnchors.map((anchor, index) => ({
-          placement: anchor.top <= centerY ? 'top' : 'bottom',
-          left: anchor.left,
-          top: anchor.top,
-          priority: placements.length + index
-        }));
-
-        return { bounds, candidates: [...directionalCandidates, ...cornerCandidates] };
-      };
-
-      const targetRectForOverlap = new DOMRect(targetRect.left, targetRect.top, targetRect.width, targetRect.height);
-      const chooseCandidate = (
-        width: number,
-        height: number,
-        candidates: CoachCandidate[]
-      ): CoachCandidate | null => {
-        const evaluateCandidate = (candidate: CoachCandidate) => {
-          const clampedLeft = clamp(candidate.left, viewportPadding, Math.max(viewportPadding, viewportWidth - width - viewportPadding));
-          const clampedTop = clamp(candidate.top, viewportPadding, Math.max(viewportPadding, viewportHeight - height - viewportPadding));
-          const candidateRect = new DOMRect(clampedLeft, clampedTop, width, height);
-          const insideViewport =
-            candidateRect.left >= viewportPadding &&
-            candidateRect.top >= viewportPadding &&
-            candidateRect.right <= viewportWidth - viewportPadding &&
-            candidateRect.bottom <= viewportHeight - viewportPadding;
-
-          const overlapX = Math.max(
-            0,
-            Math.min(candidateRect.right, targetRectForOverlap.right) -
-              Math.max(candidateRect.left, targetRectForOverlap.left)
-          );
-          const overlapY = Math.max(
-            0,
-            Math.min(candidateRect.bottom, targetRectForOverlap.bottom) -
-              Math.max(candidateRect.top, targetRectForOverlap.top)
-          );
-          const overlapArea = overlapX * overlapY;
-
-          const candidateCenterX = candidateRect.left + candidateRect.width / 2;
-          const candidateCenterY = candidateRect.top + candidateRect.height / 2;
-          const distanceFromTarget =
-            (candidateCenterX - centerX) * (candidateCenterX - centerX) +
-            (candidateCenterY - centerY) * (candidateCenterY - centerY);
-
-          return {
-            ...candidate,
-            left: clampedLeft,
-            top: clampedTop,
-            insideViewport,
-            overlapArea,
-            distanceFromTarget
-          };
-        };
-
-        const evaluated = candidates.map((candidate) => evaluateCandidate(candidate));
-        const nonOverlapping = evaluated
-          .filter((candidate) => candidate.insideViewport && candidate.overlapArea === 0)
-          .sort((a, b) => {
-            if (b.distanceFromTarget !== a.distanceFromTarget) {
-              return b.distanceFromTarget - a.distanceFromTarget;
-            }
-            return a.priority - b.priority;
-          });
-
-        if (nonOverlapping.length > 0) {
-          return nonOverlapping[0];
-        }
-
-        const overlapping = evaluated
-          .filter((candidate) => candidate.insideViewport)
-          .sort((a, b) => {
-            if (a.overlapArea !== b.overlapArea) {
-              return a.overlapArea - b.overlapArea;
-            }
-            if (b.distanceFromTarget !== a.distanceFromTarget) {
-              return b.distanceFromTarget - a.distanceFromTarget;
-            }
-            return a.priority - b.priority;
-          });
-
-        return overlapping[0] ?? null;
-      };
-
-      const primary = buildCandidates(coachWidth, coachHeight);
-      let finalCoachWidth = coachWidth;
-      let finalCoachHeight = coachHeight;
-      let chosenCandidate = chooseCandidate(finalCoachWidth, finalCoachHeight, primary.candidates);
-
-      if (!chosenCandidate) {
-        // Compact fallback to reduce overlap risk on tight viewports.
-        finalCoachWidth = Math.max(220, Math.min(finalCoachWidth, Math.floor((viewportWidth - viewportPadding * 2) * 0.82)));
-        finalCoachHeight = Math.max(180, Math.min(finalCoachHeight, viewportHeight - viewportPadding * 2 - 24));
-        const compact = buildCandidates(finalCoachWidth, finalCoachHeight);
-        chosenCandidate = chooseCandidate(finalCoachWidth, finalCoachHeight, compact.candidates);
-      }
-
-      if (!chosenCandidate) {
-        chosenCandidate = {
-          placement: 'top',
-          left: viewportPadding,
-          top: viewportPadding,
-          priority: 0
-        };
-      }
-
-      const pointerStyle: CSSProperties =
-        chosenCandidate.placement === 'bottom' || chosenCandidate.placement === 'top'
-          ? {
-              left: `${clamp(centerX - chosenCandidate.left, 16, finalCoachWidth - 16)}px`
-            }
-          : {
-              top: `${clamp(centerY - chosenCandidate.top, 16, finalCoachHeight - 16)}px`
-            };
-
-      setTutorialCoachPlacement(chosenCandidate.placement);
-      setTutorialCoachStyle({
-        left: `${chosenCandidate.left}px`,
-        top: `${chosenCandidate.top}px`,
-        width: `${finalCoachWidth}px`,
-        maxHeight: `${Math.max(180, viewportHeight - viewportPadding * 2)}px`
-      });
-      setTutorialPointerStyle(pointerStyle);
-      setTutorialSpotlightPanels(
-        buildTutorialSpotlightPanels(
-          {
-            left: targetRect.left,
-            top: targetRect.top,
-            width: targetRect.width,
-            height: targetRect.height
-          },
-          { width: viewportWidth, height: viewportHeight },
-          { padding: 8 }
-        )
-      );
-    };
-
-    const scheduleReposition = () => {
-      if (tutorialPositionRafRef.current !== null) {
-        return;
-      }
-      tutorialPositionRafRef.current = window.requestAnimationFrame(() => {
-        tutorialPositionRafRef.current = null;
-        placeCoach();
-      });
-    };
-
-    scheduleReposition();
-
-    let observer: ResizeObserver | null = null;
-    if (typeof ResizeObserver !== 'undefined') {
-      observer = new ResizeObserver(() => {
-        scheduleReposition();
-      });
-      observer.observe(target);
-      if (tutorialCoachRef.current) {
-        observer.observe(tutorialCoachRef.current);
-      }
-    }
-
-    window.addEventListener('resize', scheduleReposition);
-    window.addEventListener('scroll', scheduleReposition, true);
-
-    return () => {
-      window.removeEventListener('resize', scheduleReposition);
-      window.removeEventListener('scroll', scheduleReposition, true);
-      observer?.disconnect();
-      if (tutorialPositionRafRef.current !== null) {
-        window.cancelAnimationFrame(tutorialPositionRafRef.current);
-        tutorialPositionRafRef.current = null;
-      }
-      target.classList.remove('tutorial-highlight');
-      if (tutorialTargetRef.current === target) {
-        tutorialTargetRef.current = null;
-      }
-    };
-  }, [activeTab, authReady, currentTutorialStep.id, currentTutorialStep.targetSelector, isMenuCollapsed, showCourseActions, showQuickTutorial]);
-
-  useEffect(() => {
-    if (!showQuickTutorial || !currentTutorialStep.targetSelector) {
-      return;
-    }
-
-    const selector = currentTutorialStep.targetSelector;
-    const onClick = (event: MouseEvent) => {
-      const target = event.target as Element | null;
-      if (!target?.closest(selector)) {
-        return;
-      }
-
-      window.setTimeout(() => {
-        setTutorialCompletedStepIds((previous) => {
-          const next = new Set(previous);
-          next.add(currentTutorialStep.id);
-          return next;
-        });
-      }, 0);
-    };
-
-    document.addEventListener('click', onClick);
-    return () => {
-      document.removeEventListener('click', onClick);
-    };
-  }, [currentTutorialStep.id, currentTutorialStep.targetSelector, showQuickTutorial]);
+  }, []);
 
   const runQueue = useCallback(
     async (initialItems: DownloadQueueItem[], options?: { onlyKeys?: Set<string> }) => {
@@ -2124,7 +1664,7 @@ export function App() {
                   <button
                     key={tab}
                     id={`tab-${tab}`}
-                    data-tutorial-id={`tab-${tab}`}
+
                     type="button"
                     role="tab"
                     tabIndex={activeTab === tab ? 0 : -1}
@@ -2144,9 +1684,13 @@ export function App() {
         <section className="content-column">
           <header className="top-bar">
             <p className="brand">McLecture</p>
-            <p className="header-meta">
-              {filteredCourses.length} visible / {courseCatalog.length || courses.length} saved
-            </p>
+            {activeTab === 'courses' && (
+              <div className="header-meta">
+                <span>{courseSummaryStats.visibleMediaCount} recordings</span>
+                <span>{courseSummaryStats.visibleDownloadedCount} downloaded</span>
+                <span>{courseSummaryStats.visibleNotDownloadedCount} not downloaded</span>
+              </div>
+            )}
           </header>
 
           {(isLoading || isDownloading) && (
@@ -2165,6 +1709,15 @@ export function App() {
 
           {activeTab === 'courses' && (
             <section className="panel smooth-enter" id="panel-courses" role="tabpanel" aria-labelledby="tab-courses" tabIndex={0}>
+              {showTutorialNotice && (
+                <section className="tutorial-text-panel smooth-enter" aria-live="polite">
+                  <h3>Quick Start</h3>
+                  <p>Open myCourses and play one lecture first, then refresh Courses here, select recordings, and add them to Queue.</p>
+                  <button type="button" className="secondary-button" onClick={() => void dismissTutorialNotice()}>
+                    Dismiss
+                  </button>
+                </section>
+              )}
               {!authReady && !isLoading ? (
                 <section className="onboarding-panel smooth-enter">
                   <h2>Setup Required</h2>
@@ -2181,7 +1734,6 @@ export function App() {
                     <button
                       type="button"
                       className="action-button"
-                      data-tutorial-id="recheck-setup"
                       onClick={() => void loadInitialState()}
                     >
                       Re-check Setup
@@ -2189,7 +1741,6 @@ export function App() {
                     <button
                       type="button"
                       className="secondary-button"
-                      data-tutorial-id="open-mycourses"
                       onClick={() => window.open('https://mycourses2.mcgill.ca', '_blank', 'noopener,noreferrer')}
                     >
                       Open myCourses
@@ -2203,7 +1754,6 @@ export function App() {
                     <button
                       type="button"
                       className="action-button"
-                      data-tutorial-id="course-actions-toggle"
                       onClick={() => setShowCourseActions((prev) => !prev)}
                     >
                       {showCourseActions ? 'Hide Actions' : 'Course Actions'}
@@ -2218,7 +1768,6 @@ export function App() {
                       <button
                         type="button"
                         className="secondary-button"
-                        data-tutorial-id="open-mycourses"
                         onClick={() => window.open('https://mycourses2.mcgill.ca', '_blank', 'noopener,noreferrer')}
                       >
                         Open myCourses
@@ -2226,7 +1775,6 @@ export function App() {
                       <button
                         type="button"
                         className="action-button"
-                        data-tutorial-id="recheck-setup"
                         onClick={() => void loadInitialState()}
                       >
                         Re-check Setup
@@ -2237,7 +1785,6 @@ export function App() {
                       <button
                         type="button"
                         className="action-button"
-                        data-tutorial-id="select-all-not-downloaded"
                         onClick={handleSelectAllNotDownloaded}
                         disabled={isDownloading}
                       >
@@ -2286,24 +1833,40 @@ export function App() {
 
                     {filteredCourses.map((course) => {
                       const selectedCount = course.media.filter((item) => selected.has(item.key)).length;
+                      const totalCount = course.media.length;
+                      const downloadedCount = course.media.filter((item) => isMediaDownloaded(item)).length;
+                      const allSelected = selectedCount === totalCount && totalCount > 0;
                       const notDownloadedCount = course.media.filter((item) => !isMediaDownloaded(item)).length;
-                      const allSelected = selectedCount === course.media.length && course.media.length > 0;
                       const notDownloadedSelected =
                         notDownloadedCount > 0 && course.media.filter((item) => !isMediaDownloaded(item)).every((item) => selected.has(item.key));
 
                       return (
                         <article key={course.courseDigit} className="course-card smooth-enter">
-                          <div className="course-header">
-                            <button
-                              type="button"
-                              className="course-title"
-                              onClick={() => toggleCourseExpansion(course.courseDigit)}
-                              aria-expanded={course.expanded}
-                            >
-                              <span>{course.title}</span>
+                          <button
+                            type="button"
+                            className="course-header"
+                            onClick={() => toggleCourseExpansion(course.courseDigit)}
+                            aria-expanded={course.expanded}
+                          >
+                            <span className="course-title-row">
+                              <span className="course-title-text">{course.title}</span>
                               <span className={`chevron ${course.expanded ? 'open' : ''}`}>▾</span>
-                            </button>
-                          </div>
+                            </span>
+                            <span className="course-header-stats" aria-label={`Stats for ${course.title}`}>
+                              <span className="course-stat-chip">
+                                <strong>{totalCount}</strong>
+                                <small>Total</small>
+                              </span>
+                              <span className="course-stat-chip">
+                                <strong>{downloadedCount}</strong>
+                                <small>Downloaded</small>
+                              </span>
+                              <span className="course-stat-chip">
+                                <strong>{selectedCount}</strong>
+                                <small>Selected</small>
+                              </span>
+                            </span>
+                          </button>
 
                           {course.expanded && (
                             <div className="course-body smooth-enter">
@@ -2490,7 +2053,7 @@ export function App() {
                 <button
                   type="button"
                   className="action-button"
-                  data-tutorial-id="start-queue"
+
                   onClick={() => void handleStartQueue()}
                   disabled={isDownloading || !hasRunnableQueueItems}
                 >
@@ -2509,7 +2072,7 @@ export function App() {
                   className="danger-button"
                   onClick={() => void handleClearQueue()}
                   disabled={isDownloading || queueItems.length === 0}
-                  data-tutorial-id="clear-queue"
+
                 >
                   Clear Queue
                 </button>
@@ -2578,11 +2141,6 @@ export function App() {
           {activeTab === 'guide' && (
             <section className="help-panel smooth-enter" id="panel-guide" role="tabpanel" aria-labelledby="tab-guide" tabIndex={0}>
               <h2>Usage Guide</h2>
-              <div className="bulk-actions">
-                <button type="button" className="action-button" onClick={replayQuickTutorial}>
-                  Replay Tutorial
-                </button>
-              </div>
               <ol>
                 <li>Open myCourses, log in, and play one lecture video.</li>
                 <li>Go to Courses tab and click Refresh Courses.</li>
@@ -2642,77 +2200,6 @@ export function App() {
         </section>
       </section>
 
-      {showQuickTutorial && tutorialSpotlightPanels && (
-        <div
-          className={`tutorial-spotlight ${tutorialUseBlurSpotlight ? 'tutorial-spotlight-blur' : 'tutorial-spotlight-dim'}`}
-          aria-hidden="true"
-        >
-          <span className="tutorial-spotlight-panel" style={toFixedRectStyle(tutorialSpotlightPanels.top)} />
-          <span className="tutorial-spotlight-panel" style={toFixedRectStyle(tutorialSpotlightPanels.right)} />
-          <span className="tutorial-spotlight-panel" style={toFixedRectStyle(tutorialSpotlightPanels.bottom)} />
-          <span className="tutorial-spotlight-panel" style={toFixedRectStyle(tutorialSpotlightPanels.left)} />
-        </div>
-      )}
-
-      {showQuickTutorial && (
-        <aside
-          ref={tutorialCoachRef}
-          className={`tutorial-coach tutorial-coach-${tutorialCoachPlacement}`}
-          style={tutorialCoachStyle}
-          role="dialog"
-          aria-live="polite"
-          aria-labelledby="tutorial-title"
-        >
-          <p className="tutorial-kicker">Guided Tutorial</p>
-          <h2 id="tutorial-title">{currentTutorialStep.title}</h2>
-          <p>{currentTutorialStep.body}</p>
-          {showSetupReadyNote && <p className="tutorial-note">Setup already looks complete, so setup capture steps were skipped.</p>}
-          <p className="tutorial-target-hint">
-            {tutorialTargetVisible
-              ? `Do this now: ${currentTutorialStep.targetHint ?? 'Click the highlighted control.'}`
-              : tutorialEvaluation.requiresTargetClick
-                ? 'Target is not visible in the current UI state yet.'
-                : currentTutorialStep.targetHint ?? 'Complete the step requirements, then continue.'}
-          </p>
-          {!tutorialEvaluation.isComplete && tutorialEvaluation.blockerMessage && (
-            <p className="tutorial-blocker">{tutorialEvaluation.blockerMessage}</p>
-          )}
-          <p className="tutorial-progress">
-            Step {tutorialProgress.current} of {tutorialProgress.total}
-          </p>
-          <div className="tutorial-actions">
-            <button type="button" className="secondary-button" onClick={() => void completeQuickTutorial()}>
-              Skip
-            </button>
-            <button
-              type="button"
-              className="secondary-button"
-              onClick={handleQuickTutorialBack}
-              disabled={tutorialProgress.current === 1}
-              aria-label="Previous step"
-              title="Previous step"
-            >
-              Previous 
-            </button>
-            {isLastTutorialStep ? (
-              <button type="button" className="tutorial-primary-button" onClick={() => void completeQuickTutorial()}>
-                Finish
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="tutorial-primary-button"
-                onClick={handleQuickTutorialNext}
-                disabled={!tutorialEvaluation.isComplete}
-              >
-                Continue
-              </button>
-            )}
-          </div>
-          <span className={`tutorial-pointer tutorial-pointer-${tutorialCoachPlacement}`} style={tutorialPointerStyle} aria-hidden="true" />
-        </aside>
-      )}
-
       {confirmDialog && (
         <section className="confirm-backdrop" role="presentation" onClick={() => closeConfirmDialog(false)}>
           <div className="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="confirm-modal-title" onClick={(event) => event.stopPropagation()}>
@@ -2738,7 +2225,7 @@ export function App() {
         <button
           type="button"
           className="download-button"
-          data-tutorial-id="add-selected-to-queue"
+
           onClick={() => void handleDownload()}
           disabled={isDownloading || selected.size === 0 || !authReady}
         >

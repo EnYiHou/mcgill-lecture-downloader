@@ -12,3 +12,5 @@ dist*
 
 # Keys
 *.pem
+
+.vscode
