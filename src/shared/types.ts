@@ -4,6 +4,7 @@ export type StorageKey =
   | 'Cookies'
   | 'MediaRecordings'
   | 'CoursesDigits'
+  | 'debugLogs'
   | 'downloadedItems'
   | 'downloadQueueState'
   | 'uiPreferences'
@@ -35,12 +36,17 @@ export interface CoursesDigits {
   list: string[];
 }
 
+export interface DebugLogState {
+  entries: string[];
+}
+
 export interface ExtensionStorage {
   RecordingsInfo?: RecordingsInfo;
   CoursesList?: CoursesList;
   Cookies?: CookiesInfo;
   MediaRecordings?: MediaRecordings;
   CoursesDigits?: CoursesDigits;
+  debugLogs?: DebugLogState;
   downloadedItems?: string[];
   downloadQueueState?: DownloadQueueState;
   uiPreferences?: UiPreferences;

@@ -32,6 +32,31 @@ function storageSet<T>(key: string, value: T): Promise<void> {
   });
 }
 
+async function appendDebugLog(message: string): Promise<void> {
+  try {
+    const existing = (await storageGet<{ entries?: string[] }>('debugLogs')) ?? {};
+    const entries = Array.isArray(existing.entries) ? existing.entries : [];
+    const timestamp = new Date().toISOString();
+    const nextEntries = [...entries, `[${timestamp}] ${message}`].slice(-80);
+    await storageSet('debugLogs', { entries: nextEntries });
+  } catch {
+    // Ignore debug log failures so capture logic keeps working.
+  }
+}
+
+async function captureCourseListId(courseListId: string, source: string): Promise<void> {
+  if (!courseListId) {
+    return;
+  }
+
+  const existing = (await storageGet<CoursesList>('CoursesList')) ?? { coursesList: [] };
+  if (!existing.coursesList.includes(courseListId)) {
+    existing.coursesList.push(courseListId);
+    await storageSet('CoursesList', { coursesList: existing.coursesList });
+  }
+  await appendDebugLog(`Captured courseListId=${courseListId} from ${source}`);
+}
+
 chrome.webRequest.onBeforeSendHeaders.addListener(
   (details): chrome.webRequest.BlockingResponse | undefined => {
     void (async () => {
@@ -48,25 +73,30 @@ chrome.webRequest.onBeforeSendHeaders.addListener(
             etime: url.searchParams.get('etime')
           };
           await storageSet('RecordingsInfo', value);
+          await appendDebugLog(
+            `Captured stream token request from tsmedia (stoken=${value.stoken ? 'yes' : 'no'}, etime=${value.etime ? 'yes' : 'no'})`
+          );
           return;
         }
 
         if (details.url.includes('notifications.api.brightspace.com')) {
           const courseId = details.url.split('/').pop() ?? '';
           if (!courseId) {
+            await appendDebugLog(`Saw Brightspace notifications request but could not parse courseListId: ${details.url}`);
             return;
           }
 
-          const existing = (await storageGet<CoursesList>('CoursesList')) ?? { coursesList: [] };
-          if (!existing.coursesList.includes(courseId)) {
-            existing.coursesList.push(courseId);
-          }
-
-          await storageSet('CoursesList', { coursesList: existing.coursesList });
+          await captureCourseListId(courseId, 'Brightspace notifications request');
           return;
         }
 
         if (details.url.includes(MYCOURSES_HOST)) {
+          const url = new URL(details.url);
+          const ltiMatch = url.pathname.match(/\/d2l\/le\/lti\/(\d+)\/toolLaunch\//);
+          if (ltiMatch?.[1] && ltiMatch[1] !== '6606') {
+            await captureCourseListId(ltiMatch[1], 'myCourses toolLaunch URL');
+          }
+
           const cookieHeader = details.requestHeaders?.find(
             (header) => header.name.toLowerCase() === 'cookie'
           );
@@ -74,6 +104,7 @@ chrome.webRequest.onBeforeSendHeaders.addListener(
             cookies: cookieHeader
           };
           await storageSet('Cookies', value);
+          await appendDebugLog(`Captured myCourses cookies header (${cookieHeader?.value ? 'present' : 'missing'})`);
           return;
         }
 
@@ -90,6 +121,7 @@ chrome.webRequest.onBeforeSendHeaders.addListener(
 
           const courseDigit = details.url.split('/').pop() ?? '';
           if (!courseDigit) {
+            await appendDebugLog(`Captured media recordings auth header but could not parse course digit: ${details.url}`);
             return;
           }
 
@@ -99,8 +131,12 @@ chrome.webRequest.onBeforeSendHeaders.addListener(
           }
 
           await storageSet('CoursesDigits', { list: existing.list });
+          await appendDebugLog(
+            `Captured media recordings auth for courseDigit=${courseDigit} (authorization=${authorizationHeader?.value ? 'present' : 'missing'})`
+          );
         }
       } catch (error) {
+        await appendDebugLog(`Header capture failed: ${error instanceof Error ? error.message : String(error)}`);
         console.error('McLecture header capture failed', error);
       }
     })();

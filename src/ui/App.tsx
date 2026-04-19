@@ -13,6 +13,8 @@ import { createDownloadMarker, createLegacyFilenameMarker, isDownloaded } from '
 import { mapWithConcurrency } from '../shared/async';
 import { fetchCourseMediaList, resolveCourseDigit } from '../shared/mcgillApi';
 import {
+  clearDebugLogs,
+  readDebugLogs,
   readAuthReadiness,
   readDownloadedItems,
   readRequiredAuthData,
@@ -68,6 +70,7 @@ interface AuthState {
   etime: string;
   bearer: string;
   coursesList: string[];
+  courseDigits: string[];
   cookieHeader: string;
 }
 
@@ -76,6 +79,7 @@ interface AuthReadinessState {
   hasEtime: boolean;
   hasBearer: boolean;
   hasCourses: boolean;
+  hasCourseDigits: boolean;
   hasCookies: boolean;
 }
 
@@ -177,7 +181,13 @@ function isAuthReady(readiness: AuthReadinessState | null): boolean {
     return false;
   }
 
-  return readiness.hasStoken && readiness.hasEtime && readiness.hasBearer && readiness.hasCourses && readiness.hasCookies;
+  return (
+    readiness.hasStoken &&
+    readiness.hasEtime &&
+    readiness.hasBearer &&
+    (readiness.hasCourses || readiness.hasCourseDigits) &&
+    readiness.hasCookies
+  );
 }
 
 function resolveParentTargetOrigin(value: string | null): string {
@@ -285,6 +295,33 @@ function formatBytes(bytes: number | null | undefined): string {
   return `${value.toFixed(decimals)} ${units[unitIndex]}`;
 }
 
+async function copyText(text: string): Promise<boolean> {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      // Fall back to a document-based copy path below.
+    }
+  }
+
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.setAttribute('readonly', 'true');
+  textarea.style.position = 'fixed';
+  textarea.style.top = '-1000px';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+
+  try {
+    return document.execCommand('copy');
+  } finally {
+    document.body.removeChild(textarea);
+  }
+}
+
 export function App() {
   const [activeTab, setActiveTab] = useState<MenuTab>('courses');
   const [courses, setCourses] = useState<UiCourse[]>([]);
@@ -316,6 +353,8 @@ export function App() {
   const [mediaSizeBytesByKey, setMediaSizeBytesByKey] = useState<Record<string, number | null>>({});
   const [selectedFormatByKey, setSelectedFormatByKey] = useState<Record<string, string>>({});
   const [embedCaptions, setEmbedCaptions] = useState(true);
+  const [debugLogs, setDebugLogs] = useState<string[]>([]);
+  const [debugReportText, setDebugReportText] = useState('');
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const appShellRef = useRef<HTMLElement | null>(null);
@@ -328,6 +367,50 @@ export function App() {
   const mediaSizeFetchInFlightRef = useRef<Set<string>>(new Set());
   const keepAwakeRequestedRef = useRef(false);
   const logoUrl = chrome.runtime.getURL('icons/icon.png');
+
+  const refreshDebugLogs = useCallback(async () => {
+    setDebugLogs(await readDebugLogs());
+  }, []);
+
+  const handleCopyDebugReport = useCallback(async () => {
+    const report = [
+      'McLecture debug report',
+      `Generated at: ${new Date().toISOString()}`,
+      `hasStoken: ${authReadiness?.hasStoken ?? false}`,
+      `hasEtime: ${authReadiness?.hasEtime ?? false}`,
+      `hasBearer: ${authReadiness?.hasBearer ?? false}`,
+      `hasCourses: ${authReadiness?.hasCourses ?? false}`,
+      `hasCourseDigits: ${authReadiness?.hasCourseDigits ?? false}`,
+      `hasCookies: ${authReadiness?.hasCookies ?? false}`,
+      `capturedCourseListIds: ${auth?.coursesList.length ?? 0}`,
+      `capturedCourseDigits: ${auth?.courseDigits.length ?? 0}`,
+      `loadedCourses: ${courses.length}`,
+      `savedCourseCatalogEntries: ${courseCatalog.length}`,
+      '',
+      'Recent debug logs:',
+      ...(debugLogs.length > 0 ? debugLogs : ['(none)'])
+    ].join('\n');
+
+    setDebugReportText(report);
+
+    try {
+      const copied = await copyText(report);
+      if (!copied) {
+        setErrorMessage('Automatic copy failed. Use the report box below to copy the text manually.');
+        return;
+      }
+      setStatusMessage('Copied debug report to clipboard.');
+      setErrorMessage('');
+    } catch (error) {
+      setErrorMessage(`Failed to copy debug report: ${toErrorMessage(error)}`);
+    }
+  }, [auth?.coursesList.length, authReadiness, courseCatalog.length, courses.length, debugLogs]);
+
+  const handleClearDebugLogs = useCallback(async () => {
+    await clearDebugLogs();
+    setDebugLogs([]);
+    setStatusMessage('Cleared debug logs.');
+  }, []);
 
   const mediaByKey = useMemo(() => {
     const map = new Map<string, UiMediaItem>();
@@ -550,6 +633,7 @@ export function App() {
         hasEtime: false,
         hasBearer: false,
         hasCourses: false,
+        hasCourseDigits: false,
         hasCookies: false
       });
       setCourses([]);
@@ -585,6 +669,7 @@ export function App() {
       setShowTutorialNotice(!tutorialSeen);
       setDownloaded(downloadedItems);
       setAuthReadiness(readiness);
+      setDebugLogs(await readDebugLogs());
 
       const hiddenList = storedHidden?.list ?? [];
       const hiddenSet = new Set(hiddenList);
@@ -673,8 +758,7 @@ export function App() {
         candidateMap.set(result.value.courseDigit, result.value);
       });
 
-      const courseDigits = await storageGet('CoursesDigits');
-      for (const courseDigit of courseDigits?.list ?? []) {
+      for (const courseDigit of authData.courseDigits) {
         if (hiddenSet.has(courseDigit)) {
           continue;
         }
@@ -791,6 +875,10 @@ export function App() {
   useEffect(() => {
     void loadInitialState();
   }, [loadInitialState]);
+
+  useEffect(() => {
+    void refreshDebugLogs();
+  }, [refreshDebugLogs]);
 
   useEffect(() => {
     if (!auth) {
@@ -1724,7 +1812,9 @@ export function App() {
                   <p>Complete these steps on myCourses before refreshing courses:</p>
                   <ol>
                     <li className={authReadiness?.hasCookies ? 'done' : ''}>Open and log in to myCourses.</li>
-                    <li className={authReadiness?.hasCourses ? 'done' : ''}>Open one course page with lecture recordings.</li>
+                    <li className={authReadiness?.hasCourses || authReadiness?.hasCourseDigits ? 'done' : ''}>
+                      Open one course page with lecture recordings.
+                    </li>
                     <li className={authReadiness?.hasBearer ? 'done' : ''}>Play one lecture to capture API authorization.</li>
                     <li className={authReadiness?.hasStoken && authReadiness?.hasEtime ? 'done' : ''}>
                       Let the lecture load so stream tokens are captured.
@@ -2157,6 +2247,47 @@ export function App() {
                   <li>Captured session headers stay in local browser extension storage.</li>
                   <li>No remote analytics or third-party data sharing is performed.</li>
                 </ul>
+              </section>
+
+              <section className="permissions-panel">
+                <h3>Capture Diagnostics</h3>
+                <p>
+                  The course discovery step currently depends on a Brightspace notifications request firing while you browse myCourses.
+                  If that request does not happen, the extension may capture stream tokens and auth headers but still show no courses.
+                </p>
+                <ul>
+                  <li>`hasStoken`: {authReadiness?.hasStoken ? 'yes' : 'no'}</li>
+                  <li>`hasEtime`: {authReadiness?.hasEtime ? 'yes' : 'no'}</li>
+                  <li>`hasBearer`: {authReadiness?.hasBearer ? 'yes' : 'no'}</li>
+                  <li>`hasCourses`: {authReadiness?.hasCourses ? 'yes' : 'no'}</li>
+                  <li>`hasCourseDigits`: {authReadiness?.hasCourseDigits ? 'yes' : 'no'}</li>
+                  <li>`hasCookies`: {authReadiness?.hasCookies ? 'yes' : 'no'}</li>
+                  <li>`capturedCourseListIds`: {auth?.coursesList.length ?? 0}</li>
+                  <li>`capturedCourseDigits`: {auth?.courseDigits.length ?? 0}</li>
+                  <li>`savedCourseCatalogEntries`: {courseCatalog.length}</li>
+                </ul>
+                <div className="queue-controls smooth-enter">
+                  <button type="button" className="secondary-button" onClick={() => void refreshDebugLogs()}>
+                    Refresh Debug Info
+                  </button>
+                  <button type="button" className="secondary-button" onClick={() => void handleCopyDebugReport()}>
+                    Copy Debug Report
+                  </button>
+                  <button type="button" className="danger-button" onClick={() => void handleClearDebugLogs()}>
+                    Clear Debug Logs
+                  </button>
+                </div>
+                {debugReportText ? (
+                  <textarea
+                    value={debugReportText}
+                    readOnly
+                    rows={10}
+                    onFocus={(event) => event.currentTarget.select()}
+                    aria-label="Debug report text"
+                    className="error-banner smooth-enter"
+                  />
+                ) : null}
+                <pre className="error-banner smooth-enter">{debugLogs.length > 0 ? debugLogs.join('\n') : 'No debug logs captured yet.'}</pre>
               </section>
 
               <section className="preferences-panel">
