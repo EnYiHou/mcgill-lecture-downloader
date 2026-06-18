@@ -1,10 +1,17 @@
-# McGill Lecture Downloader
+# McLecture
 
-Chrome extension for downloading McGill myCourses lecture recordings.
+Chrome MV3 extension for downloading McGill myCourses lecture recordings.
 
-## Chrome Web Store Installation
+[Chrome Web Store](https://chromewebstore.google.com/detail/mclecture/ipnhkfogmlokecmpgjhdkkibomgbjmlb) · [Repository](https://github.com/EnYiHou/mcgill-lecture-downloader)
 
-[Chrome Web Store Link](https://chromewebstore.google.com/detail/mclecture/ipnhkfogmlokecmpgjhdkkibomgbjmlb)
+![McLecture overlay for selecting lecture recordings](./screenshots/popup.png)
+
+## Tech stack
+
+- TypeScript, React, and Vite
+- Chrome Extension Manifest V3 APIs
+- ESLint, Prettier, and Vitest
+- Browser download flow with `.mp4` remuxing
 
 ## Development setup
 
