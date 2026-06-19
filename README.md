@@ -2,7 +2,7 @@
 
 Chrome MV3 extension for downloading McGill myCourses lecture recordings.
 
-[Chrome Web Store](https://chromewebstore.google.com/detail/mclecture/ipnhkfogmlokecmpgjhdkkibomgbjmlb) · [Repository](https://github.com/EnYiHou/mcgill-lecture-downloader)
+[Chrome Web Store](https://chromewebstore.google.com/detail/mclecture/ipnhkfogmlokecmpgjhdkkibomgbjmlb) · [Repository](https://github.com/EnYiHou/mclecture)
 
 <p>
   <img src="./screenshots/popup.png" width="32%" alt="McLecture overlay for selecting lecture recordings">
