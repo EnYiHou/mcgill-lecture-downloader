@@ -8,6 +8,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..');
 const extensionPath = join(repoRoot, 'dist');
 const screenshotDir = join(repoRoot, 'screenshots');
+const screenshotSize = { width: 1280, height: 800 };
 
 const scenarios = [
   ['popup', 'popup.png'],
@@ -31,7 +32,7 @@ async function getExtensionId(context) {
 
 async function captureScenario(context, extensionId, scenario, filename) {
   const page = await context.newPage();
-  await page.setViewportSize({ width: 1206, height: 1206 });
+  await page.setViewportSize(screenshotSize);
   await page.goto(`chrome-extension://${extensionId}/popup.html?screenshot=${scenario}`);
   await page.waitForSelector('[data-screenshot-ready="true"]', { timeout: 15_000 });
   await page.waitForTimeout(250);
@@ -48,11 +49,11 @@ const userDataDir = await mkdtemp(join(tmpdir(), 'mclecture-screenshots-'));
 try {
   const context = await chromium.launchPersistentContext(userDataDir, {
     headless: false,
-    viewport: { width: 1206, height: 1206 },
+    viewport: screenshotSize,
     args: [
       `--disable-extensions-except=${extensionPath}`,
       `--load-extension=${extensionPath}`,
-      '--window-size=1206,1206'
+      `--window-size=${screenshotSize.width},${screenshotSize.height}`
     ]
   });
 
