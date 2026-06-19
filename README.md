@@ -16,7 +16,7 @@
     <img alt="License" src="https://img.shields.io/github/license/EnYiHou/mclecture?style=for-the-badge&color=7f1d1d">
   </a>
   <a href="https://github.com/EnYiHou/mclecture">
-    <img alt="Manifest version" src="https://img.shields.io/badge/manifest-v2.0.12-b91c1c?style=for-the-badge">
+    <img alt="Manifest version" src="https://img.shields.io/badge/manifest-v2.0.13-b91c1c?style=for-the-badge">
   </a>
 </p>
 
