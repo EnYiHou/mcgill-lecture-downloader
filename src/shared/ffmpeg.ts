@@ -279,7 +279,7 @@ export async function ensureFfmpegLoaded(): Promise<FFmpegCoreModule> {
   return ffmpegCore;
 }
 
-async function resetFfmpegCore(reason: string): Promise<void> {
+function resetFfmpegCore(reason: string): void {
   if (!ffmpegCore) {
     return;
   }
@@ -576,7 +576,7 @@ export async function remuxTsToMp4(
   outputFileName: string,
   captionTrack?: RemuxCaptionTrack | null
 ): Promise<RemuxResult> {
-  await resetFfmpegCore('job start');
+  resetFfmpegCore('job start');
   ffmpegCommandTraces.length = 0;
   const debugLog: string[] = [];
   const pushDebug = (message: string): void => {
@@ -950,7 +950,7 @@ export async function remuxTsToMp4(
     }
 
     return {
-      blob: new Blob([result], { type: 'video/mp4' }),
+      blob: new Blob([new Uint8Array(result)], { type: 'video/mp4' }),
       captionsEmbedded,
       debugLog
     };
@@ -967,7 +967,7 @@ export async function remuxTsToMp4(
     if (captionSrtFileName) {
       removeFsFile(module, captionSrtFileName);
     }
-    await resetFfmpegCore('job finished');
+    resetFfmpegCore('job finished');
     // Give the browser a tick to reclaim JS/WASM memory before next queue item.
     await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
   }

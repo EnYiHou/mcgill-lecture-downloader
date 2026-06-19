@@ -253,7 +253,7 @@ export async function downloadAndRemuxMedia({
   onProgress,
   signal
 }: DownloadMediaInput): Promise<void> {
-  let release: (() => void) | null = null;
+  let release: () => void = () => {};
   const previous = downloadPipelineLock;
   downloadPipelineLock = new Promise<void>((resolve) => {
     release = resolve;
@@ -320,6 +320,6 @@ export async function downloadAndRemuxMedia({
   onProgress?.('Saving file');
   saveBlobDownload(mp4Blob, outputName);
   } finally {
-    release?.();
+    release();
   }
 }

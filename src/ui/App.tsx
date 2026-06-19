@@ -96,6 +96,36 @@ type MenuTab = 'courses' | 'library' | 'queue' | 'guide';
 const TAB_ORDER: readonly MenuTab[] = ['courses', 'library', 'queue', 'guide'];
 const PARENT_MESSAGE_SOURCE = 'mclecture';
 const PARENT_MESSAGE_TYPE_DOWNLOAD_STATE = 'download-state';
+const SCREENSHOT_MODE = import.meta.env.MODE === 'screenshots';
+
+type ScreenshotScenario = 'popup' | 'downloading' | 'help';
+
+interface ScreenshotFixtureState {
+  scenario: ScreenshotScenario;
+  activeTab: MenuTab;
+  courses: UiCourse[];
+  courseCatalog: CourseCatalogEntry[];
+  hiddenCourseDigits: Set<string>;
+  selected: Set<string>;
+  downloaded: Set<string>;
+  auth: AuthState;
+  authReadiness: AuthReadinessState;
+  uiPreferences: UiPreferences;
+  isLoading: boolean;
+  isDownloading: boolean;
+  activeDownloadTotal: number;
+  activeDownloadCompleted: number;
+  statusMessage: string;
+  errorMessage: string;
+  queueItems: DownloadQueueItem[];
+  showTutorialNotice: boolean;
+  showCourseActions: boolean;
+  mediaSizeBytesByKey: Record<string, number | null>;
+  selectedFormatByKey: Record<string, string>;
+  embedCaptions: boolean;
+  debugLogs: string[];
+  debugReportText: string;
+}
 
 function normalizeFilename(courseName: string, index: number): string {
   return `${courseName}_${index}`.replace(/\s+/g, '');
@@ -322,39 +352,289 @@ async function copyText(text: string): Promise<boolean> {
   }
 }
 
+function getScreenshotScenario(): ScreenshotScenario | null {
+  if (!SCREENSHOT_MODE) {
+    return null;
+  }
+
+  const value = new URLSearchParams(window.location.search).get('screenshot');
+  if (value === 'popup' || value === 'downloading' || value === 'help') {
+    return value;
+  }
+
+  return 'popup';
+}
+
+function buildScreenshotMediaItem(
+  courseDigit: string,
+  id: string,
+  filename: string,
+  recordingName: string,
+  recordingTime: string,
+  uploadedAt: string,
+  options?: {
+    caption?: boolean;
+    primaryFormat?: string;
+  }
+): UiMediaItem {
+  const downloadMarker = createDownloadMarker(courseDigit, id);
+  const captionSrc = options?.caption ? 'https://example.invalid/mclecture-captions.vtt' : null;
+
+  return {
+    key: `${downloadMarker}::${filename}`,
+    courseDigit,
+    id,
+    downloadMarker,
+    filename,
+    recordingName,
+    recordingTime,
+    uploadedAt,
+    videoType: options?.primaryFormat ?? 'HD',
+    formatOptions: [
+      { label: 'HD', resolution: '720' },
+      { label: 'VGA', resolution: '360' },
+      { label: 'Audio', resolution: null }
+    ],
+    captionSrc,
+    captionLanguage: captionSrc ? 'en' : null,
+    captionLabel: captionSrc ? 'English' : null
+  };
+}
+
+function buildScreenshotFixture(): ScreenshotFixtureState | null {
+  const scenario = getScreenshotScenario();
+  if (!scenario) {
+    return null;
+  }
+
+  const courseDigit = '843221';
+  const now = Date.now();
+  const media = [
+    buildScreenshotMediaItem(
+      courseDigit,
+      'sample-recording-001',
+      'COMP551AppliedMachineLearning_01',
+      'Lecture 12 - Representation Learning',
+      'Mar 18, 2026, 10:05 AM',
+      'Mar 18, 2026, 11:42 AM',
+      { caption: true, primaryFormat: 'HD' }
+    ),
+    buildScreenshotMediaItem(
+      courseDigit,
+      'sample-recording-002',
+      'COMP551AppliedMachineLearning_02',
+      'Tutorial 05 - Policy Gradients',
+      'Mar 21, 2026, 2:35 PM',
+      'Mar 21, 2026, 3:12 PM',
+      { caption: true, primaryFormat: 'VGA' }
+    ),
+    buildScreenshotMediaItem(
+      courseDigit,
+      'sample-recording-003',
+      'COMP551AppliedMachineLearning_03',
+      'Review - Midterm Practice',
+      'Mar 25, 2026, 4:00 PM',
+      'Mar 25, 2026, 5:08 PM',
+      { primaryFormat: 'HD' }
+    )
+  ];
+
+  const courses: UiCourse[] = [
+    {
+      courseDigit,
+      courseListId: 'sample-course-list-001',
+      title: 'COMP 551 Applied Machine Learning, ID: 843221',
+      media,
+      expanded: true
+    }
+  ];
+  const courseCatalog: CourseCatalogEntry[] = [
+    {
+      courseDigit,
+      title: courses[0].title,
+      courseListId: courses[0].courseListId,
+      lastSeenAt: now
+    },
+    {
+      courseDigit: '729114',
+      title: 'MATH 323 Probability, ID: 729114',
+      courseListId: 'sample-course-list-002',
+      lastSeenAt: now - 86_400_000
+    }
+  ];
+  const selected = scenario === 'help' ? new Set<string>() : new Set([media[1].key, media[2].key]);
+  const downloaded = new Set([media[0].downloadMarker, createLegacyFilenameMarker(media[0].filename)]);
+  const selectedFormatByKey: Record<string, string> = {
+    [media[0].key]: 'HD',
+    [media[1].key]: 'VGA',
+    [media[2].key]: 'HD'
+  };
+  const mediaSizeBytesByKey: Record<string, number | null> = {
+    [`${media[0].key}::HD`]: 1_428_742_144,
+    [`${media[1].key}::VGA`]: 482_344_960,
+    [`${media[2].key}::HD`]: 948_183_040
+  };
+  const authReadiness: AuthReadinessState = {
+    hasStoken: true,
+    hasEtime: true,
+    hasBearer: true,
+    hasCourses: true,
+    hasCourseDigits: true,
+    hasCookies: true
+  };
+  const auth: AuthState = {
+    stoken: 'sample-stoken',
+    etime: '1893456000',
+    bearer: 'sample-bearer',
+    coursesList: ['sample-course-list-001', 'sample-course-list-002'],
+    courseDigits: ['843221', '729114'],
+    cookieHeader: 'sample_cookie=true'
+  };
+  const uiPreferences: UiPreferences = {
+    performanceMode: true,
+    reducedMotion: true,
+    showVisualEffects: false,
+    menuCollapsed: false,
+    remuxToMp4: true
+  };
+  const queueItems: DownloadQueueItem[] = [
+    {
+      key: media[0].key,
+      courseDigit,
+      rid: media[0].id,
+      downloadMarker: media[0].downloadMarker,
+      fileName: media[0].filename,
+      videoType: 'HD',
+      remuxToMp4: true,
+      captionSrc: media[0].captionSrc,
+      captionLanguage: media[0].captionLanguage,
+      embedCaptions: true,
+      recordingName: media[0].recordingName,
+      status: 'downloading'
+    },
+    {
+      key: media[1].key,
+      courseDigit,
+      rid: media[1].id,
+      downloadMarker: media[1].downloadMarker,
+      fileName: media[1].filename,
+      videoType: 'VGA',
+      remuxToMp4: true,
+      captionSrc: media[1].captionSrc,
+      captionLanguage: media[1].captionLanguage,
+      embedCaptions: true,
+      recordingName: media[1].recordingName,
+      status: 'queued'
+    },
+    {
+      key: media[2].key,
+      courseDigit,
+      rid: media[2].id,
+      downloadMarker: media[2].downloadMarker,
+      fileName: media[2].filename,
+      videoType: 'HD',
+      remuxToMp4: true,
+      captionSrc: media[2].captionSrc,
+      captionLanguage: media[2].captionLanguage,
+      embedCaptions: false,
+      recordingName: media[2].recordingName,
+      status: 'failed',
+      error: 'Sample failure: stream token expired before retry.'
+    },
+    {
+      key: `${courseDigit}::sample-recording-004::COMP551AppliedMachineLearning_04`,
+      courseDigit,
+      rid: 'sample-recording-004',
+      downloadMarker: createDownloadMarker(courseDigit, 'sample-recording-004'),
+      fileName: 'COMP551AppliedMachineLearning_04',
+      videoType: 'HD',
+      remuxToMp4: true,
+      captionSrc: null,
+      captionLanguage: null,
+      embedCaptions: false,
+      recordingName: 'Office Hours - Exam Strategy',
+      status: 'done'
+    }
+  ];
+
+  return {
+    scenario,
+    activeTab: scenario === 'help' ? 'guide' : scenario === 'downloading' ? 'queue' : 'courses',
+    courses,
+    courseCatalog,
+    hiddenCourseDigits: new Set(),
+    selected,
+    downloaded,
+    auth,
+    authReadiness,
+    uiPreferences,
+    isLoading: false,
+    isDownloading: scenario === 'downloading',
+    activeDownloadTotal: scenario === 'downloading' ? 4 : 0,
+    activeDownloadCompleted: scenario === 'downloading' ? 1 : 0,
+    statusMessage: scenario === 'downloading' ? 'Remuxing Lecture 12 - Representation Learning' : 'Fixture data loaded.',
+    errorMessage: '',
+    queueItems: scenario === 'downloading' ? queueItems : [],
+    showTutorialNotice: false,
+    showCourseActions: false,
+    mediaSizeBytesByKey,
+    selectedFormatByKey,
+    embedCaptions: true,
+    debugLogs: [
+      '[2026-03-25T18:15:00.000Z] Captured sample stream token.',
+      '[2026-03-25T18:15:04.000Z] Loaded 2 sample courses.',
+      '[2026-03-25T18:15:07.000Z] Queue fixture initialized for screenshot mode.'
+    ],
+    debugReportText: ''
+  };
+}
+
 export function App() {
-  const [activeTab, setActiveTab] = useState<MenuTab>('courses');
-  const [courses, setCourses] = useState<UiCourse[]>([]);
-  const [courseCatalog, setCourseCatalog] = useState<CourseCatalogEntry[]>([]);
-  const [hiddenCourseDigits, setHiddenCourseDigits] = useState<Set<string>>(new Set());
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [downloaded, setDownloaded] = useState<Set<string>>(new Set());
-  const [auth, setAuth] = useState<AuthState | null>(null);
-  const [authReadiness, setAuthReadiness] = useState<AuthReadinessState | null>(null);
+  const screenshotFixture = useMemo(() => buildScreenshotFixture(), []);
+  const [activeTab, setActiveTab] = useState<MenuTab>(screenshotFixture?.activeTab ?? 'courses');
+  const [courses, setCourses] = useState<UiCourse[]>(screenshotFixture?.courses ?? []);
+  const [courseCatalog, setCourseCatalog] = useState<CourseCatalogEntry[]>(screenshotFixture?.courseCatalog ?? []);
+  const [hiddenCourseDigits, setHiddenCourseDigits] = useState<Set<string>>(
+    screenshotFixture?.hiddenCourseDigits ?? new Set()
+  );
+  const [selected, setSelected] = useState<Set<string>>(screenshotFixture?.selected ?? new Set());
+  const [downloaded, setDownloaded] = useState<Set<string>>(screenshotFixture?.downloaded ?? new Set());
+  const [auth, setAuth] = useState<AuthState | null>(screenshotFixture?.auth ?? null);
+  const [authReadiness, setAuthReadiness] = useState<AuthReadinessState | null>(
+    screenshotFixture?.authReadiness ?? null
+  );
   const [searchTerm, setSearchTerm] = useState('');
-  const [showCourseActions, setShowCourseActions] = useState(false);
+  const [showCourseActions, setShowCourseActions] = useState(screenshotFixture?.showCourseActions ?? false);
   const [uiPreferences, setUiPreferences] = useState<UiPreferences>({
+    ...(screenshotFixture?.uiPreferences ?? {
     performanceMode: false,
     reducedMotion: false,
     showVisualEffects: true,
     menuCollapsed: false,
     remuxToMp4: true
+    })
   });
 
-  const [isLoading, setIsLoading] = useState(true);
-  const [isDownloading, setIsDownloading] = useState(false);
-  const [activeDownloadTotal, setActiveDownloadTotal] = useState(0);
-  const [activeDownloadCompleted, setActiveDownloadCompleted] = useState(0);
-  const [statusMessage, setStatusMessage] = useState('');
-  const [errorMessage, setErrorMessage] = useState('');
-  const [queueItems, setQueueItems] = useState<DownloadQueueItem[]>([]);
+  const [isLoading, setIsLoading] = useState(screenshotFixture?.isLoading ?? true);
+  const [isDownloading, setIsDownloading] = useState(screenshotFixture?.isDownloading ?? false);
+  const [activeDownloadTotal, setActiveDownloadTotal] = useState(screenshotFixture?.activeDownloadTotal ?? 0);
+  const [activeDownloadCompleted, setActiveDownloadCompleted] = useState(
+    screenshotFixture?.activeDownloadCompleted ?? 0
+  );
+  const [statusMessage, setStatusMessage] = useState(screenshotFixture?.statusMessage ?? '');
+  const [errorMessage, setErrorMessage] = useState(screenshotFixture?.errorMessage ?? '');
+  const [queueItems, setQueueItems] = useState<DownloadQueueItem[]>(screenshotFixture?.queueItems ?? []);
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null);
-  const [showTutorialNotice, setShowTutorialNotice] = useState(false);
-  const [mediaSizeBytesByKey, setMediaSizeBytesByKey] = useState<Record<string, number | null>>({});
-  const [selectedFormatByKey, setSelectedFormatByKey] = useState<Record<string, string>>({});
-  const [embedCaptions, setEmbedCaptions] = useState(true);
-  const [debugLogs, setDebugLogs] = useState<string[]>([]);
-  const [debugReportText, setDebugReportText] = useState('');
+  const [showTutorialNotice, setShowTutorialNotice] = useState(screenshotFixture?.showTutorialNotice ?? false);
+  const [mediaSizeBytesByKey, setMediaSizeBytesByKey] = useState<Record<string, number | null>>(
+    screenshotFixture?.mediaSizeBytesByKey ?? {}
+  );
+  const [selectedFormatByKey, setSelectedFormatByKey] = useState<Record<string, string>>(
+    screenshotFixture?.selectedFormatByKey ?? {}
+  );
+  const [embedCaptions, setEmbedCaptions] = useState(screenshotFixture?.embedCaptions ?? true);
+  const [debugLogs, setDebugLogs] = useState<string[]>(screenshotFixture?.debugLogs ?? []);
+  const [debugReportText, setDebugReportText] = useState(screenshotFixture?.debugReportText ?? '');
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const appShellRef = useRef<HTMLElement | null>(null);
@@ -734,7 +1014,7 @@ export function App() {
           return null;
         }
         console.log("Resolved course digit:", resolved.courseDigit, "for course list ID:", courseListId, "with context title:", resolved.contextTitle);
-        const title = resolved.contextTitle;
+        const title = resolved.contextTitle ?? `Course ID: ${resolved.courseDigit}`;
         return {
           courseDigit: resolved.courseDigit,
           title,
@@ -873,14 +1153,26 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    if (screenshotFixture) {
+      return;
+    }
+
     void loadInitialState();
-  }, [loadInitialState]);
+  }, [loadInitialState, screenshotFixture]);
 
   useEffect(() => {
+    if (screenshotFixture) {
+      return;
+    }
+
     void refreshDebugLogs();
-  }, [refreshDebugLogs]);
+  }, [refreshDebugLogs, screenshotFixture]);
 
   useEffect(() => {
+    if (screenshotFixture) {
+      return;
+    }
+
     if (!auth) {
       return;
     }
@@ -960,7 +1252,7 @@ export function App() {
         mediaSizeFetchInFlightRef.current.delete(entry.selectionKey);
       });
     };
-  }, [auth, courses, mediaSizeBytesByKey, selectedFormatByKey]);
+  }, [auth, courses, mediaSizeBytesByKey, selectedFormatByKey, screenshotFixture]);
 
   useEffect(() => {
     if (channelRef.current) {
@@ -1586,7 +1878,7 @@ export function App() {
       return;
     }
 
-    const preparedQueue = queueItems.map((item) => {
+    const preparedQueue: DownloadQueueItem[] = queueItems.map((item) => {
       if (item.status === 'failed' || item.status === 'canceled') {
         return { ...item, status: 'queued', error: undefined };
       }
@@ -1608,7 +1900,7 @@ export function App() {
       return;
     }
 
-    const preparedQueue = queueItems.map((entry) => {
+    const preparedQueue: DownloadQueueItem[] = queueItems.map((entry) => {
       if (entry.key === item.key) {
         return { ...entry, status: 'queued', error: undefined };
       }
@@ -1719,7 +2011,12 @@ export function App() {
   };
 
   return (
-    <main ref={appShellRef} className={`app-shell fade-in ${uiPreferences.reducedMotion ? 'reduce-motion' : ''}`}>
+    <main
+      ref={appShellRef}
+      className={`app-shell fade-in ${uiPreferences.reducedMotion ? 'reduce-motion' : ''}`}
+      data-screenshot-ready={screenshotFixture ? 'true' : undefined}
+      data-screenshot-scenario={screenshotFixture?.scenario}
+    >
       {!uiPreferences.performanceMode && uiPreferences.showVisualEffects && (
         <Suspense fallback={null}>
           <MouseEffectBackground />

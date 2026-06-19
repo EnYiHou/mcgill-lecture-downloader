@@ -4,7 +4,11 @@ Chrome MV3 extension for downloading McGill myCourses lecture recordings.
 
 [Chrome Web Store](https://chromewebstore.google.com/detail/mclecture/ipnhkfogmlokecmpgjhdkkibomgbjmlb) · [Repository](https://github.com/EnYiHou/mcgill-lecture-downloader)
 
-![McLecture overlay for selecting lecture recordings](./screenshots/popup.png)
+<p>
+  <img src="./screenshots/popup.png" width="32%" alt="McLecture overlay for selecting lecture recordings">
+  <img src="./screenshots/downloading.png" width="32%" alt="McLecture download queue while recordings are processing">
+  <img src="./screenshots/help.png" width="32%" alt="McLecture usage guide and capture diagnostics">
+</p>
 
 ## Tech stack
 
@@ -27,6 +31,16 @@ Chrome MV3 extension for downloading McGill myCourses lecture recordings.
 ## Build output
 
 - Build artifacts are generated in `dist/`.
+
+## Screenshots
+
+Regenerate the README screenshots from fake fixture data:
+
+```bash
+npm run screenshots
+```
+
+The screenshot workflow does not use real myCourses sessions, cookies, recordings, or course data.
 
 ## Load unpacked extension
 
