@@ -1,4 +1,8 @@
-# McLecture
+<p align="center">
+  <img src="./assets/logo.png" width="112" alt="McLecture logo">
+</p>
+
+<h1 align="center">McLecture</h1>
 
 <p align="center">
   <strong>A Chrome extension for saving McGill myCourses lecture recordings as local MP4 files.</strong>
@@ -12,7 +16,7 @@
     <img alt="License" src="https://img.shields.io/github/license/EnYiHou/mclecture?style=for-the-badge&color=7f1d1d">
   </a>
   <a href="https://github.com/EnYiHou/mclecture">
-    <img alt="Manifest version" src="https://img.shields.io/badge/manifest-v2.0.11-b91c1c?style=for-the-badge">
+    <img alt="Manifest version" src="https://img.shields.io/badge/manifest-v2.0.12-b91c1c?style=for-the-badge">
   </a>
 </p>
 
@@ -20,12 +24,6 @@
   <a href="https://chromewebstore.google.com/detail/mclecture/ipnhkfogmlokecmpgjhdkkibomgbjmlb">Chrome Web Store</a>
   ·
   <a href="https://github.com/EnYiHou/mclecture/issues">Report an issue</a>
-</p>
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/EnYiHou/mclecture/main/screenshots/popup.png?v=2bc0430" width="32%" alt="McLecture course view for selecting lecture recordings">
-  <img src="https://raw.githubusercontent.com/EnYiHou/mclecture/main/screenshots/downloading.png?v=2bc0430" width="32%" alt="McLecture queue view showing active and pending downloads">
-  <img src="https://raw.githubusercontent.com/EnYiHou/mclecture/main/screenshots/help.png?v=2bc0430" width="32%" alt="McLecture guide and diagnostics view">
 </p>
 
 ## Overview
@@ -46,6 +44,13 @@ The extension is built for a simple workflow: open myCourses, play a lecture onc
 - Download markers so previously saved recordings are easier to identify.
 - Guide and diagnostics view for troubleshooting captured auth/session state.
 - Deterministic README screenshot automation with fake fixture data.
+
+## Product Preview
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/EnYiHou/mclecture/main/screenshots/popup.png?v=2bc0430" width="49%" alt="McLecture course view for selecting lecture recordings">
+  <img src="https://raw.githubusercontent.com/EnYiHou/mclecture/main/screenshots/downloading.png?v=2bc0430" width="49%" alt="McLecture queue view showing active and pending downloads">
+</p>
 
 ## Built With
 
@@ -110,6 +115,8 @@ The screenshot workflow builds the extension in Vite screenshot mode, opens dete
 - `screenshots/popup.png`
 - `screenshots/downloading.png`
 - `screenshots/help.png`
+
+The README displays the course and queue screenshots. The help screenshot is still generated for maintainers and release assets.
 
 These screenshots use fake course names, fake recordings, fake queue state, and fake diagnostics. They do not use real myCourses sessions, cookies, recordings, tokens, or course data.
 
